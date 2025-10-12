@@ -6,14 +6,18 @@
 LiteStepVersion "0.25.0"
 
 ; Store theme assets in the default theme folder.
-ConfigDir "$LiteStepDir$\\themes\\default"
+ConfigDir "$LiteStepDir$\themes\default"
 
-; Core modules that power the popup menu, hotkeys and basic UI helpers.
-; Comment out any LoadModule line if the corresponding module is not installed.
-LoadModule $LiteStepDir$popup2.dll
-LoadModule $LiteStepDir$hotkey.dll
-LoadModule $LiteStepDir$wharf.dll
-LoadModule $LiteStepDir$xPaintClass.dll
+; Core modules from nModules: comment out any entry if the module is unavailable.
+LoadModule $LiteStepDir$nCore.dll
+LoadModule $LiteStepDir$nPopup.dll
+LoadModule $LiteStepDir$nKey.dll
+LoadModule $LiteStepDir$nTray.dll
+LoadModule $LiteStepDir$nTask.dll
+LoadModule $LiteStepDir$nTaskSwitch.dll
+LoadModule $LiteStepDir$nClock.dll
+LoadModule $LiteStepDir$nStartMenu.dll
+LoadModule $LiteStepDir$nWallpaper.dll
 
 ; ------------------------------------------------------------------------------
 ; Popup menu configuration
@@ -29,7 +33,7 @@ PopupNoBevel
 *Popup !Separator
 *Popup "Start Menu" !PopupDynamicFolder:"$StartMenu$|$CommonStartMenu$"
 *Popup "Documents" !PopupDynamicFolder:"$PERSONAL$"
-*Popup "Downloads" !PopupDynamicFolder:"$PERSONAL$\\Downloads"
+*Popup "Downloads" !PopupDynamicFolder:"$PERSONAL$\Downloads"
 *Popup !Separator
 *Popup "Control Panel" !PopupControlPanel
 *Popup "Recent Documents" !PopupRecentDocuments
@@ -41,18 +45,11 @@ PopupNoBevel
 *Popup "Restart LiteStep" !Recycle
 
 ; ------------------------------------------------------------------------------
-; Keyboard shortcuts (require hotkey.dll)
+; Keyboard shortcuts (require nKey.dll)
 ; ------------------------------------------------------------------------------
 *Hotkey WIN SPACE !Popup
-*Hotkey WIN E $WINDIR$\\explorer.exe
+*Hotkey WIN E $WINDIR$\explorer.exe
 *Hotkey WIN R !PopupRun
-*Hotkey WIN L $WINDIR$\\System32\\rundll32.exe user32.dll,LockWorkStation
-
-; ------------------------------------------------------------------------------
-; Wharf starter bar (requires wharf.dll)
-; ------------------------------------------------------------------------------
-*WharfEntry "Explorer" "$WINDIR$\\explorer.exe"
-*WharfEntry "Settings" "$WINDIR$\\System32\\SystemSettings.exe"
-*WharfEntry "Terminal" "$WINDIR$\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+*Hotkey WIN L $WINDIR$\System32\rundll32.exe user32.dll,LockWorkStation
 
 ; End of default configuration.
