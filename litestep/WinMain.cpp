@@ -166,6 +166,66 @@ bool SendCommandLineBang(LPCTSTR pszCommand, LPCTSTR pszArgs)
     return bSuccess;
 }
 
+static bool ForceShutdownExistingInstance(DWORD timeoutMs)
+{
+    if (timeoutMs == 0)
+    {
+        timeoutMs = 1;
+    }
+
+    SendCommandLineBang(_T("!ShutDown"), NULL);
+
+    HWND hExisting = FindWindow(szMainWindowClass, szMainWindowTitle);
+    HANDLE hExistingProcess = NULL;
+
+    if (IsWindow(hExisting))
+    {
+        DWORD existingProcessId = 0;
+        GetWindowThreadProcessId(hExisting, &existingProcessId);
+
+        if (existingProcessId != 0)
+        {
+            hExistingProcess = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, existingProcessId);
+        }
+
+        SendMessageTimeout(hExisting, WM_SYSCOMMAND, SC_CLOSE, 0, SMTO_ABORTIFHUNG, 2000, NULL);
+
+        if (hExistingProcess)
+        {
+            DWORD waitSlice = timeoutMs / 2;
+            if (waitSlice == 0)
+            {
+                waitSlice = timeoutMs;
+            }
+
+            if (WaitForSingleObject(hExistingProcess, waitSlice) != WAIT_OBJECT_0)
+            {
+                TerminateProcess(hExistingProcess, 0);
+                WaitForSingleObject(hExistingProcess, waitSlice);
+            }
+        }
+    }
+
+    if (hExistingProcess)
+    {
+        CloseHandle(hExistingProcess);
+        hExistingProcess = NULL;
+    }
+
+    DWORD deadline = GetTickCount() + timeoutMs;
+
+    while (GetTickCount() < deadline)
+    {
+        if (FindWindow(szMainWindowClass, szMainWindowTitle) == NULL)
+        {
+            return true;
+        }
+
+        Sleep(100);
+    }
+
+    return (FindWindow(szMainWindowClass, szMainWindowTitle) == NULL);
+}
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
@@ -308,50 +368,91 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR lpCmdLine, int)
             if (wStartFlags & LSF_RUN_LITESTEP)
             {
                 HANDLE hMutex = NULL;
+                bool allowLiteStep = true;
 
                 if (IsOtherInstanceRunning(&hMutex))
                 {
-                    //
-                    // Mode 3a: Other LiteStep instance already running
-                    //
-                    RESOURCE_STR(hInst, IDS_LITESTEP_ERROR1,
-                        L"A previous instance of LiteStep was detected.\n"
-                        L"Are you sure you want to continue?");
-
-                    // Can show a MessageBox here since the other instance
-                    // should have closed the welcome screen already
-                    INT idConfirm =  RESOURCE_MSGBOX_F(
-                        L"LiteStep", MB_ICONINFORMATION | MB_YESNO | MB_DEFBUTTON2);
-
-                    if (idConfirm == IDNO)
+                    if (hMutex)
                     {
-                        wStartFlags &= ~LSF_RUN_LITESTEP;
+                        CloseHandle(hMutex);
+                        hMutex = NULL;
+                    }
+
+                    const DWORD existingInstanceTimeout = 15000;
+
+                    if (!ForceShutdownExistingInstance(existingInstanceTimeout))
+                    {
+                        MessageBox(NULL,
+                            L"LiteStep could not close the previously running instance.",
+                            L"LiteStep",
+                            MB_ICONERROR | MB_OK);
+                        allowLiteStep = false;
+                        nReturn = LRV_NO_STEP;
+                    }
+                    else
+                    {
+                        const DWORD waitDeadline = GetTickCount() + existingInstanceTimeout;
+                        bool obtainedMutex = false;
+
+                        while (GetTickCount() < waitDeadline)
+                        {
+                            HANDLE hRetry = NULL;
+
+                            if (!IsOtherInstanceRunning(&hRetry))
+                            {
+                                hMutex = hRetry;
+                                obtainedMutex = true;
+                                break;
+                            }
+
+                            if (hRetry)
+                            {
+                                CloseHandle(hRetry);
+                                hRetry = NULL;
+                            }
+
+                            Sleep(100);
+                        }
+
+                        if (!obtainedMutex)
+                        {
+                            MessageBox(NULL,
+                                L"LiteStep could not take ownership after closing the previous instance.",
+                                L"LiteStep",
+                                MB_ICONERROR | MB_OK);
+                            allowLiteStep = false;
+                            nReturn = LRV_NO_STEP;
+                        }
                     }
                 }
 
-                if (wStartFlags & LSF_RUN_LITESTEP)
+                if (allowLiteStep && (wStartFlags & LSF_RUN_LITESTEP))
                 {
-                    //
-                    // Mode 3b: Start the shell!
-                    //
+                    // Mode 3b: Start the shell once we are the only instance
                     nReturn = StartLitestep(hInst, wStartFlags, szAltConfigFile);
                 }
 
                 if (hMutex)
                 {
                     CloseHandle(hMutex);
+                    hMutex = NULL;
                 }
 
-                if (nReturn == LRV_EXPLORER_START)
+                if (!allowLiteStep)
+                {
+                    wStartFlags &= ~LSF_RUN_LITESTEP;
+                }
+                else if (nReturn == LRV_EXPLORER_START)
                 {
                     // User wants Explorer as shell anyway
                     wStartFlags |= LSF_RUN_EXPLORER;
                 }
             }
-
         } while (nReturn == LRV_EXPLORER_START && (wStartFlags & LSF_RUN_LITESTEP));
     }
 
     return nReturn;
 }
+
+
 
