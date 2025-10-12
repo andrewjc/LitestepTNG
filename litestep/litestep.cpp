@@ -312,10 +312,47 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
 
     // Initialize OLE/COM
     hr = OleInitialize(NULL);
-    if (GetRCBoolW(L"LSOverlayMode", FALSE))
+    const bool overlayFlagForced = ((wStartFlags & LSF_OVERLAY_MODE) != 0);
+    const bool closeExplorerForced = ((wStartFlags & LSF_CLOSE_EXPLORER) != 0);
+    const bool rcOverlayDefault = GetRCBoolW(L"LSOverlayMode", FALSE);
+
+    if (rcOverlayDefault && !closeExplorerForced)
     {
         wStartFlags |= LSF_OVERLAY_MODE;
         wStartFlags &= ~LSF_CLOSE_EXPLORER;
+    }
+
+    bool explorerDetected = (FindWindow(L"Shell_TrayWnd", NULL) != NULL);
+
+    if (explorerDetected && !overlayFlagForced && !closeExplorerForced)
+    {
+        UINT promptFlags = MB_ICONQUESTION | MB_SYSTEMMODAL |
+            MB_SETFOREGROUND | MB_YESNOCANCEL;
+        promptFlags |= rcOverlayDefault ? MB_DEFBUTTON2 : MB_DEFBUTTON1;
+
+        int promptResult = MessageBox(
+            NULL,
+            L"Explorer is already running as the Windows shell.\n\n"
+            L"Choose Yes to hide Explorer and let LiteStep take over the desktop.\n"
+            L"Choose No to keep Explorer running and overlay LiteStep on top.\n"
+            L"Choose Cancel to stop LiteStep from loading.",
+            L"LiteStep",
+            promptFlags);
+
+        if (promptResult == IDCANCEL)
+        {
+            return S_FALSE;
+        }
+        else if (promptResult == IDYES)
+        {
+            wStartFlags |= LSF_CLOSE_EXPLORER;
+            wStartFlags &= ~LSF_OVERLAY_MODE;
+        }
+        else
+        {
+            wStartFlags |= LSF_OVERLAY_MODE;
+            wStartFlags &= ~LSF_CLOSE_EXPLORER;
+        }
     }
 
     m_bOverlayMode = ((wStartFlags & LSF_OVERLAY_MODE) != 0);
@@ -343,12 +380,13 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
     //
     // Check for another shell
     //
-    if (!m_bOverlayMode && FindWindow(L"Shell_TrayWnd", NULL) != NULL)
+    if (!m_bOverlayMode && explorerDetected &&
+        (wStartFlags & LSF_CLOSE_EXPLORER))
     {
-        if ((wStartFlags & LSF_CLOSE_EXPLORER) || GetRCBoolW(L"LSCloseExplorer", TRUE))
-        {
-            HWND hTrayWindow = FindWindow(L"Shell_TrayWnd", NULL);
+        HWND hTrayWindow = FindWindow(L"Shell_TrayWnd", NULL);
 
+        if (hTrayWindow != NULL)
+        {
             // Determine the name of the current Shell
             DWORD dwProcessID;
             GetWindowThreadProcessId(hTrayWindow, &dwProcessID);
@@ -395,13 +433,15 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
                 CloseHandle(hShellProc);
             }
         }
+
+        explorerDetected = (FindWindow(L"Shell_TrayWnd", NULL) != NULL);
     }
 
     if (m_bOverlayMode)
     {
         bUnderExplorer = true;
     }
-    else if (FindWindow(L"Shell_TrayWnd", NULL) != NULL)
+    else if (explorerDetected)
     {
         if (GetRCBoolW(L"LSNoShellWarning", FALSE))
         {
@@ -1577,4 +1617,5 @@ BOOL CLiteStep::_SetShellWindow(HWND hWnd) {
 
     return bRet;
 }
+
 
