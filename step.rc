@@ -17,9 +17,13 @@ LoadModule $LiteStepDir$nKey.dll
 LoadModule $LiteStepDir$nTray.dll
 LoadModule $LiteStepDir$nTask.dll
 LoadModule $LiteStepDir$nTaskSwitch.dll
+LoadModule $LiteStepDir$nLabel.dll
 LoadModule $LiteStepDir$nClock.dll
 LoadModule $LiteStepDir$nStartMenu.dll
 LoadModule $LiteStepDir$nWallpaper.dll
+
+; Load module layout definitions
+Include "$ConfigDir$\layout.rc"
 
 ; ------------------------------------------------------------------------------
 ; Popup menu configuration
@@ -55,3 +59,5 @@ PopupNoBevel
 *Hotkey WIN L $WINDIR$\System32\rundll32.exe user32.dll,LockWorkStation
 
 ; End of default configuration.
+
+
