@@ -26,6 +26,7 @@
 #include "IDesktopWallpaper.h"
 #include "COMFactory.h"
 #include "../utility/debug.hpp"
+#include <functional>
 #include "../lsapi/lsapi.h"
 
 
@@ -58,10 +59,6 @@ void COMService::ThreadProc()
 #endif
 
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-
-    // C2CF3110-460E-4fc1-B9D0-8A1C0C9CC4BD
-    const GUID CLSID_DesktopWallpaper = { 0xC2CF3110, 0x460E, 0x4FC1,
-        { 0xB9, 0xD0, 0x8A, 0x1C, 0x0C, 0x9C, 0xC4, 0xBD } };
 
     DWORD dwFactoryCookie;
     CoRegisterClassObject(CLSID_DesktopWallpaper, m_pFactory,
@@ -116,3 +113,4 @@ HRESULT COMService::Recycle()
 {
     return S_OK;
 }
+

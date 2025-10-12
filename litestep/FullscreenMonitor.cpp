@@ -22,6 +22,7 @@
 #include "FullscreenMonitor.h"
 #include "../lsapi/lsapi.h"
 #include "../utility/debug.hpp"
+#include <functional>
 
 
 //
@@ -383,3 +384,4 @@ HRESULT FullscreenMonitor::Recycle()
 
     return S_OK;
 }
+
