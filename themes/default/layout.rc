@@ -6,8 +6,8 @@
 *nTaskbar TaskbarMain
 TaskbarMainMonitor primary
 TaskbarMainX 80
-TaskbarMainY 100% - 48
-TaskbarMainWidth 100% - 320
+TaskbarMainY 100%-48
+TaskbarMainWidth 100%-320
 TaskbarMainHeight 48
 TaskbarMainAlwaysOnTop true
 TaskbarMainBlurBehind true
@@ -27,8 +27,8 @@ TaskbarMainButtonMaxHeight 36
 
 ; System tray anchored to the lower-right corner.
 *nTray TrayPrimary
-TrayPrimaryX 100% - 220
-TrayPrimaryY 100% - 48
+TrayPrimaryX 100%-220
+TrayPrimaryY 100%-48
 TrayPrimaryWidth 220
 TrayPrimaryHeight 48
 TrayPrimaryAlwaysOnTop true
@@ -39,12 +39,12 @@ TrayPrimaryIconFontColor #FFFFFFFF
 
 ; Digital clock label beside the tray.
 *nLabel ClockLabel
-ClockLabelX 100% - 340
-ClockLabelY 100% - 48
+ClockLabelX 100%-340
+ClockLabelY 100%-48
 ClockLabelWidth 120
 ClockLabelHeight 48
 ClockLabelAlwaysOnTop true
-ClockLabelColor #001E1E1E
+ClockLabelColor #CC1E1E1E
 ClockLabelFont "Segoe UI Semibold"
 ClockLabelFontSize 18
 ClockLabelFontColor #FFFFFFFF
@@ -56,7 +56,7 @@ ClockLabelOn LeftDoubleClick none !Execute [$WINDIR$\System32\control.exe timeda
 ; Start button label on the left that opens the start menu popup.
 *nLabel StartButton
 StartButtonX 0
-StartButtonY 100% - 48
+StartButtonY 100%-48
 StartButtonWidth 80
 StartButtonHeight 48
 StartButtonAlwaysOnTop true

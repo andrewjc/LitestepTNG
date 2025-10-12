@@ -25,7 +25,13 @@
 #include "../utility/shellhlp.h"
 
 #include <algorithm>
+#include <shellapi.h>
 #include <docobj.h>
+
+#ifndef NOTIFYICON_VERSION_4
+#define NOTIFYICON_VERSION_4 4
+#endif
+
 #include <regstr.h>
 
 #pragma warning(disable : 4312)
@@ -48,6 +54,38 @@ static const TCHAR szNotifyClass[] = _T("TrayNotifyWnd");
 //
 const GUID CLSID_SysTrayObject = \
 {0x35CEC8A3, 0x2BE6, 0x11D2, {0x87, 0x73, 0x92, 0xE2, 0x20, 0x52, 0x41, 0x53}};
+
+namespace
+{
+    void AllowMessageThroughUIPI(HWND hwnd, UINT message)
+    {
+        if (!hwnd || message == 0)
+        {
+            return;
+        }
+
+        static const auto fnChangeWindowMessageFilterEx =
+            reinterpret_cast<decltype(&ChangeWindowMessageFilterEx)>(
+                GetProcAddress(GetModuleHandle(_T("USER32.DLL")), "ChangeWindowMessageFilterEx"));
+
+        if (fnChangeWindowMessageFilterEx)
+        {
+            CHANGEFILTERSTRUCT cfs = { sizeof(cfs) };
+            fnChangeWindowMessageFilterEx(hwnd, message, MSGFLT_ALLOW, &cfs);
+        }
+        else
+        {
+            static const auto fnChangeWindowMessageFilter =
+                reinterpret_cast<BOOL (WINAPI*)(UINT, DWORD)>(
+                    GetProcAddress(GetModuleHandle(_T("USER32.DLL")), "ChangeWindowMessageFilter"));
+
+            if (fnChangeWindowMessageFilter)
+            {
+                fnChangeWindowMessageFilter(message, MSGFLT_ADD);
+            }
+        }
+    }
+}
 
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -117,9 +155,14 @@ HRESULT TrayService::Start()
             // >>> after making sure the necessary security precautions are in
             // >>> place.
 
+            const UINT taskbarCreatedMsg = RegisterWindowMessage(_T("TaskbarCreated"));
+            AllowMessageThroughUIPI(m_hTrayWnd, taskbarCreatedMsg);
+
+            const UINT taskbarButtonCreatedMsg = RegisterWindowMessage(_T("TaskbarButtonCreated"));
+            AllowMessageThroughUIPI(m_hTrayWnd, taskbarButtonCreatedMsg);
+
             // tell apps to reregister their icons
-            SendNotifyMessage(HWND_BROADCAST,
-                RegisterWindowMessage(_T("TaskbarCreated")), 0, 0);
+            SendNotifyMessage(HWND_BROADCAST, taskbarCreatedMsg, 0, 0);
 
             // tell ITaskbarList which window to communicate with
             m_taskbarListHandler.Start(m_hTrayWnd);
@@ -2279,26 +2322,40 @@ bool TrayService::setVersionIcon(const NID_XX& nid)
             ,0
         };
 
+        UINT requestedVersion = 0;
+
         switch (nid.cbSize)
         {
         case NID_7W_SIZE:
         case NID_6W_SIZE:
         case NID_5W_SIZE:
-            lsnid.uVersion = ((NID_5W&)nid).uVersion;
-            (*it)->SetVersion(((NID_5W&)nid).uVersion);
+            requestedVersion = ((const NID_5W&)nid).uVersion;
             break;
 
         case NID_6A_SIZE:
         case NID_5A_SIZE:
-            lsnid.uVersion = ((NID_5A&)nid).uVersion;
-            (*it)->SetVersion(((NID_5A&)nid).uVersion);
+            requestedVersion = ((const NID_5A&)nid).uVersion;
             break;
 
         default:
             break;
         }
 
-        bReturn = notify(NIM_SETVERSION, &lsnid);
+        if (requestedVersion != 0)
+        {
+            if (IsWindows7OrAbove())
+            {
+                requestedVersion = std::max<UINT>(requestedVersion, NOTIFYICON_VERSION_4);
+            }
+            else if (IsVistaOrAbove())
+            {
+                requestedVersion = std::max<UINT>(requestedVersion, NOTIFYICON_VERSION);
+            }
+
+            lsnid.uVersion = requestedVersion;
+            (*it)->SetVersion(requestedVersion);
+            bReturn = notify(NIM_SETVERSION, &lsnid);
+        }
     }
 
     return bReturn;
@@ -2348,3 +2405,9 @@ IconVector::iterator TrayService::findIcon(const NID_XX& nid)
 
     return m_siVector.end();
 }
+
+
+
+
+
+

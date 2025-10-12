@@ -46,6 +46,7 @@ DWORD LSGetModuleFileNameEx(HANDLE hProcess, HMODULE hModule,
 DWORD LSGetProcessImageFileName(HANDLE hProcess, LPTSTR pszBuffer, DWORD cchBuffer);
 HRESULT TryAllowSetForegroundWindow(HWND hWnd);
 bool IsVistaOrAbove();
+bool IsWindows7OrAbove();
 void LSShutdownDialog(HWND hWnd);
 BOOL LSPlaySystemSound(LPCWSTR pwzSoundAlias);
 HANDLE LSCreateThread(LPCSTR pszName, LPTHREAD_START_ROUTINE fnStartAddres,
@@ -133,3 +134,4 @@ inline HRESULT HrGetLastError()
 HRESULT DescriptionFromHR(HRESULT hr, LPWSTR buf, size_t cchBuf);
 
 #endif // SHELLHLP_H
+

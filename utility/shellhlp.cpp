@@ -23,6 +23,8 @@
 #include "core.hpp"
 #include <MMSystem.h>
 
+bool IsWindowsVersionOrGreater(WORD wMajorVersion, WORD wMinorVersion, WORD wServicePackMajor);
+
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
@@ -539,6 +541,10 @@ bool IsVistaOrAbove()
     return VerifyVersionInfo(&ovi, VER_MAJORVERSION | VER_PLATFORMID, uConditionMask) != FALSE;
 }
 
+bool IsWindows7OrAbove()
+{
+    return IsWindowsVersionOrGreater(6, 1, 0);
+}
 
 //
 // LSShutdownDialog
@@ -1065,3 +1071,5 @@ HRESULT DescriptionFromHR(HRESULT hr, LPWSTR buf, size_t cchBuf) {
 
     return S_OK;
 }
+
+
