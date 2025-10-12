@@ -31,6 +31,13 @@
 
 #include "../utility/shlobj.h"
 
+#if defined(__has_include)
+#  if __has_include(<shobjidl_core.h>)
+#    include <shobjidl_core.h>
+#  endif
+#endif
+
+#ifndef __IDesktopWallpaper_INTERFACE_DEFINED__
 enum DESKTOP_SLIDESHOW_DIRECTION
 {
     DSD_FORWARD = 0,
@@ -81,4 +88,7 @@ class IDesktopWallpaper : public IUnknown
     STDMETHOD(Enable) (BOOL) = 0;
 };
 
+#endif // __IDesktopWallpaper_INTERFACE_DEFINED__
+
 #endif // IDESKTOPWALLPAPER_H
+
