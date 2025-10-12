@@ -87,6 +87,11 @@ WORD ParseCommandLine(LPCTSTR pszCommandLine, LPTSTR pszFile, DWORD cchFile)
                 wStartFlags &= ~LSF_RUN_EXPLORER;
                 wStartFlags |= LSF_CLOSE_EXPLORER;
             }
+            else if (!_tcsicmp(szToken, _T("-overlay")))
+            {
+                wStartFlags |= LSF_OVERLAY_MODE;
+                wStartFlags &= ~LSF_CLOSE_EXPLORER;
+            }
         }
         else
         {
@@ -349,3 +354,4 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR lpCmdLine, int)
 
     return nReturn;
 }
+

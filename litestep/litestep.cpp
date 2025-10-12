@@ -257,7 +257,8 @@ int StartLitestep(HINSTANCE hInst, WORD wStartFlags, LPCTSTR pszAltConfigFile)
 CLiteStep::CLiteStep()
 : m_pRecoveryMenu(nullptr),
   m_pRegisterShellHook(nullptr),
-  m_hWtsDll(nullptr)
+  m_hWtsDll(nullptr),
+  m_bOverlayMode(false)
 {
     m_hInstance = nullptr;
     m_hMainWindow = nullptr;
@@ -311,6 +312,23 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
 
     // Initialize OLE/COM
     hr = OleInitialize(NULL);
+    if (GetRCBoolW(L"LSOverlayMode", FALSE))
+    {
+        wStartFlags |= LSF_OVERLAY_MODE;
+        wStartFlags &= ~LSF_CLOSE_EXPLORER;
+    }
+
+    m_bOverlayMode = ((wStartFlags & LSF_OVERLAY_MODE) != 0);
+
+    if (m_bOverlayMode)
+    {
+        SetEnvironmentVariable(L"LSOverlayMode", L"1");
+    }
+    else
+    {
+        SetEnvironmentVariable(L"LSOverlayMode", NULL);
+    }
+
 
     // Order of precedence: 1) shift key, 2) command line flags, 3) step.rc
     if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) ||
@@ -325,7 +343,7 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
     //
     // Check for another shell
     //
-    if (FindWindow(L"Shell_TrayWnd", NULL) != NULL)
+    if (!m_bOverlayMode && FindWindow(L"Shell_TrayWnd", NULL) != NULL)
     {
         if ((wStartFlags & LSF_CLOSE_EXPLORER) || GetRCBoolW(L"LSCloseExplorer", TRUE))
         {
@@ -379,7 +397,11 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
         }
     }
 
-    if (FindWindow(L"Shell_TrayWnd", NULL) != NULL)
+    if (m_bOverlayMode)
+    {
+        bUnderExplorer = true;
+    }
+    else if (FindWindow(L"Shell_TrayWnd", NULL) != NULL)
     {
         if (GetRCBoolW(L"LSNoShellWarning", FALSE))
         {
@@ -562,7 +584,13 @@ HRESULT CLiteStep::CreateMainWindow()
     //
     // Create main window
     //
-    m_hMainWindow = CreateWindowEx(WS_EX_TOOLWINDOW,
+    DWORD dwExStyle = WS_EX_TOOLWINDOW;
+    if (m_bOverlayMode)
+    {
+        dwExStyle |= WS_EX_TOPMOST;
+    }
+
+    m_hMainWindow = CreateWindowEx(dwExStyle,
         szMainWindowClass, szMainWindowTitle,
         0, 0, 0, 0,
         0, NULL, NULL,
@@ -576,6 +604,12 @@ HRESULT CLiteStep::CreateMainWindow()
 
         // Set our window in LSAPI
         LSAPISetLitestepWindow(m_hMainWindow);
+
+        if (m_bOverlayMode)
+        {
+            SetWindowPos(m_hMainWindow, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
 
         _RegisterShellNotifications(m_hMainWindow);
 
@@ -1543,3 +1577,4 @@ BOOL CLiteStep::_SetShellWindow(HWND hWnd) {
 
     return bRet;
 }
+

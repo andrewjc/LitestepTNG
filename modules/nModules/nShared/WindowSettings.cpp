@@ -46,6 +46,13 @@ WindowSettings::WindowSettings()
     , x(0)
     , y(0)
 {
+    WCHAR overlayMode[2] = { 0 };
+    if (GetEnvironmentVariableW(L"LSOverlayMode", overlayMode, _countof(overlayMode)) > 0 &&
+        overlayMode[0] != L'0')
+    {
+        alwaysOnTop = true;
+    }
+
     *text = L'\0';
 }
 
@@ -93,3 +100,4 @@ D2D1_TEXT_ANTIALIAS_MODE WindowSettings::ParseAntiAliasMode(LPCTSTR str)
 {
     return textAntiAliasModeMap.GetByB(str, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
 }
+

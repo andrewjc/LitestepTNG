@@ -57,6 +57,7 @@ const TCHAR szMainWindowTitle[] = _T("LiteStep");
 #define LSF_RUN_LITESTEP       0x0008
 #define LSF_RUN_EXPLORER       0x0010
 #define LSF_CLOSE_EXPLORER     0x0020
+#define LSF_OVERLAY_MODE      0x0040
 
 int StartLitestep(HINSTANCE hInst, WORD wStartFlags, LPCTSTR pszAltConfigFile);
 
@@ -103,6 +104,7 @@ private:
 
     // Windows
     HWND m_hMainWindow; // = NULL;
+    bool m_bOverlayMode;
 
     // Notifications (Shell Hooks + WTS notifications)
     typedef BOOL (WINAPI* RSHPROC)(HWND, DWORD);

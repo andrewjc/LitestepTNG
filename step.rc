@@ -7,6 +7,8 @@ LiteStepVersion "0.25.0"
 
 ; Store theme assets in the default theme folder.
 ConfigDir "$LiteStepDir$\themes\default"
+; Enable overlay mode when running alongside Explorer
+LSOverlayMode true
 
 ; Core modules from nModules: comment out any entry if the module is unavailable.
 LoadModule $LiteStepDir$nCore.dll
