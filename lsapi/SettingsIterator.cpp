@@ -93,8 +93,6 @@ BOOL SettingsIterator::ReadNextConfig(LPCWSTR pwzConfig, LPWSTR pwzValue, size_t
 
     if (pwzValue != nullptr && cchValue > 0 && pwzConfig != nullptr)
     {
-        SettingsMap::iterator itSettings;
-
         pwzValue[0] = L'\0';
 
 #if defined(LS_COMPAT_LCREADNEXTCONFIG)
@@ -116,36 +114,33 @@ BOOL SettingsIterator::ReadNextConfig(LPCWSTR pwzConfig, LPWSTR pwzValue, size_t
         // Has ReadNextConfig been used before for pszConfig?
         IteratorMap::iterator it = m_Iterators.find(pwzConfig);
 
+        auto range = m_pSettingsMap->equal_range(pwzConfig);
+
         if (it == m_Iterators.end())
         {
-            // No, so find the first item with a key of pszConfig
-            itSettings = m_pSettingsMap->lower_bound(pwzConfig);
-
-            if (itSettings != m_pSettingsMap->end())
+            if (range.first != range.second)
             {
-                // Save the iterator for future use and return the value
-                it = (m_Iterators.insert(
-                    IteratorMap::value_type(pwzConfig, itSettings)
-                ));
+                it = m_Iterators.insert(
+                    IteratorMap::value_type(pwzConfig, range.first)
+                );
 
                 bReturn = TRUE;
             }
         }
         else
         {
-            // Yes so find the last item with a matching key
-            itSettings = m_pSettingsMap->upper_bound(pwzConfig);
+            auto rangeEnd = range.second;
 
-            // Loop until we either find an item with a matching key or the
-            // last matching item
-            do
+            if (it->second != rangeEnd)
             {
-                ++it->second;
-            } while ((_wcsicmp(pwzConfig, it->first.c_str()) != 0) &&
-                     (it->second != itSettings));
+                do
+                {
+                    ++it->second;
+                } while (it->second != rangeEnd &&
+                         _wcsicmp(pwzConfig, it->first.c_str()) != 0);
+            }
 
-            // If we found a valid item, return it
-            if (it->second != itSettings)
+            if (it->second != rangeEnd)
             {
                 bReturn = TRUE;
             }
@@ -161,3 +156,4 @@ BOOL SettingsIterator::ReadNextConfig(LPCWSTR pwzConfig, LPWSTR pwzValue, size_t
 
     return bReturn;
 }
+

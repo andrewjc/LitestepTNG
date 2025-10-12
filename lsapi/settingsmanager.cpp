@@ -74,10 +74,11 @@ BOOL SettingsManager::_FindLine(LPCWSTR pwzName, SettingsMap::iterator &it)
     BOOL bReturn = FALSE;
 
     // first appearance of a setting takes effect
-    it = m_SettingsMap.lower_bound(pwzName);
+    auto range = m_SettingsMap.equal_range(pwzName);
 
-    if (it != m_SettingsMap.end() && _wcsicmp(pwzName, it->first.c_str()) == 0)
+    if (range.first != range.second)
     {
+        it = range.first;
         bReturn = TRUE;
     }
 
@@ -737,3 +738,4 @@ BOOL SettingsManager::LCReadNextLine(LPVOID pFile, LPWSTR pwzValue, size_t cchVa
 
     return bReturn;
 }
+
