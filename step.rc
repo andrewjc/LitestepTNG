@@ -1,0 +1,58 @@
+; ------------------------------------------------------------------------------
+; LiteStep default configuration for Windows 11
+; Generated to provide a usable desktop when no custom step.rc exists.
+; ------------------------------------------------------------------------------
+
+LiteStepVersion "0.25.0"
+
+; Store theme assets in the default theme folder.
+ConfigDir "$LiteStepDir$\\themes\\default"
+
+; Core modules that power the popup menu, hotkeys and basic UI helpers.
+; Comment out any LoadModule line if the corresponding module is not installed.
+LoadModule $LiteStepDir$popup2.dll
+LoadModule $LiteStepDir$hotkey.dll
+LoadModule $LiteStepDir$wharf.dll
+LoadModule $LiteStepDir$xPaintClass.dll
+
+; ------------------------------------------------------------------------------
+; Popup menu configuration
+; ------------------------------------------------------------------------------
+HotlistName "LiteStep Default"
+PopupIcons
+PopupAdaptiveWidth
+PopupMinWidth 160
+PopupMaxWidth 360
+PopupNoBevel
+
+*Popup "My Computer" !PopupMyComputer
+*Popup !Separator
+*Popup "Start Menu" !PopupDynamicFolder:"$StartMenu$|$CommonStartMenu$"
+*Popup "Documents" !PopupDynamicFolder:"$PERSONAL$"
+*Popup "Downloads" !PopupDynamicFolder:"$PERSONAL$\\Downloads"
+*Popup !Separator
+*Popup "Control Panel" !PopupControlPanel
+*Popup "Recent Documents" !PopupRecentDocuments
+*Popup "Running Tasks" !PopupTasks
+*Popup !Separator
+*Popup "Run..." !PopupRun
+*Popup "Recycle Bin" !PopupRecycleBin
+*Popup !Separator
+*Popup "Restart LiteStep" !Recycle
+
+; ------------------------------------------------------------------------------
+; Keyboard shortcuts (require hotkey.dll)
+; ------------------------------------------------------------------------------
+*Hotkey WIN SPACE !Popup
+*Hotkey WIN E $WINDIR$\\explorer.exe
+*Hotkey WIN R !PopupRun
+*Hotkey WIN L $WINDIR$\\System32\\rundll32.exe user32.dll,LockWorkStation
+
+; ------------------------------------------------------------------------------
+; Wharf starter bar (requires wharf.dll)
+; ------------------------------------------------------------------------------
+*WharfEntry "Explorer" "$WINDIR$\\explorer.exe"
+*WharfEntry "Settings" "$WINDIR$\\System32\\SystemSettings.exe"
+*WharfEntry "Terminal" "$WINDIR$\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+
+; End of default configuration.
