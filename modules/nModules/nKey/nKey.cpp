@@ -14,6 +14,8 @@
 #include "../Utilities/StringUtils.h"
 
 #include <unordered_map>
+#include <algorithm>
+#include <cwctype>
 #include <Shlwapi.h>
 #include <strsafe.h>
 
@@ -26,6 +28,7 @@ static void LoadVKeyTable();
 static std::pair<bool, LPCWSTR> AddHotkey(UINT mods, UINT key, LPCWSTR command);
 static UINT ParseMods(LPCWSTR mods);
 static UINT ParseKey(LPCWSTR key);
+static UINT LookupDefaultVirtualKey(const std::wstring& keyName);
 
 // The messages we want from the core
 static UINT gLSMessages[] = { LM_GETREVID, LM_REFRESH, 0 };
@@ -126,7 +129,7 @@ LRESULT WINAPI LSMessageHandler(HWND window, UINT message, WPARAM wParam, LPARAM
 /// Adds a hotkey.
 /// </summary>
 static std::pair<bool, LPCWSTR> AddHotkey(UINT mods, UINT key, LPCWSTR command) {
-  if (mods == -1 || key == -1) {
+  if (mods == UINT(-1) || key == UINT(-1)) {
     return std::make_pair(false, L"Invalid modifiers or key.");
   }
 
@@ -162,6 +165,7 @@ static void LoadVKeyTable() {
           continue;
         }
         if (LiteStep::LCTokenize(line, tokens, 2, nullptr) == 2) {
+          _wcsupr_s(name, _countof(name));
           vkey = wcstoul(code, &endPtr, 0);
           if (*code != L'\0' && (*endPtr == L'\0' || *endPtr == L';')) {
             gVKCodes[name] = vkey;
@@ -211,18 +215,160 @@ static void LoadHotKeys() {
 /// String -> Virtual Key Code
 /// </summary>
 static UINT ParseKey(LPCWSTR key) {
-  // If the key is a single character, find that key.
-  if (wcslen(key) == 1) {
-    return VkKeyScanW(key[0]) & 0xFF;
-  } else {
-    // Check if it's in our table
-    VKMap::const_iterator vk = gVKCodes.find(key);
-    if (vk != gVKCodes.end()) {
-      return vk->second;
-    }
+  if (key == nullptr || *key == L'\0') {
+    return UINT(-1);
   }
 
-  // Fail
+  const size_t length = wcslen(key);
+
+  if (length == 1) {
+    SHORT scan = VkKeyScanW(key[0]);
+    if (scan == -1) {
+      return UINT(-1);
+    }
+    return static_cast<UINT>(scan & 0xFF);
+  }
+
+  std::wstring lookup(key);
+  std::transform(lookup.begin(), lookup.end(), lookup.begin(), [](wchar_t ch) {
+    return static_cast<wchar_t>(towupper(static_cast<unsigned short>(ch)));
+  });
+
+  VKMap::const_iterator vk = gVKCodes.find(lookup);
+  if (vk != gVKCodes.end()) {
+    return vk->second;
+  }
+
+  UINT fallback = LookupDefaultVirtualKey(lookup);
+  if (fallback != UINT(-1)) {
+    return fallback;
+  }
+
+  wchar_t* endPtr = nullptr;
+  unsigned long numeric = wcstoul(lookup.c_str(), &endPtr, 0);
+  if (endPtr != nullptr && *endPtr == L'\0' && numeric <= 0xFFFF) {
+    return static_cast<UINT>(numeric);
+  }
+
+  return UINT(-1);
+}
+
+static UINT LookupDefaultVirtualKey(const std::wstring& keyName) {
+  static const std::unordered_map<std::wstring, UINT> defaultKeys = []() {
+    std::unordered_map<std::wstring, UINT> map;
+    map.reserve(128);
+    auto add = [&map](const wchar_t* name, UINT code) {
+      map.emplace(name, code);
+    };
+
+    add(L"SPACE", VK_SPACE);
+    add(L"VK_SPACE", VK_SPACE);
+    add(L"TAB", VK_TAB);
+    add(L"VK_TAB", VK_TAB);
+    add(L"ENTER", VK_RETURN);
+    add(L"RETURN", VK_RETURN);
+    add(L"VK_RETURN", VK_RETURN);
+    add(L"ESC", VK_ESCAPE);
+    add(L"ESCAPE", VK_ESCAPE);
+    add(L"VK_ESCAPE", VK_ESCAPE);
+    add(L"BACKSPACE", VK_BACK);
+    add(L"BACK", VK_BACK);
+    add(L"VK_BACK", VK_BACK);
+    add(L"DELETE", VK_DELETE);
+    add(L"DEL", VK_DELETE);
+    add(L"VK_DELETE", VK_DELETE);
+    add(L"INSERT", VK_INSERT);
+    add(L"INS", VK_INSERT);
+    add(L"VK_INSERT", VK_INSERT);
+    add(L"HOME", VK_HOME);
+    add(L"END", VK_END);
+    add(L"PGUP", VK_PRIOR);
+    add(L"PAGEUP", VK_PRIOR);
+    add(L"VK_PRIOR", VK_PRIOR);
+    add(L"PGDN", VK_NEXT);
+    add(L"PAGEDOWN", VK_NEXT);
+    add(L"VK_NEXT", VK_NEXT);
+    add(L"UP", VK_UP);
+    add(L"DOWN", VK_DOWN);
+    add(L"LEFT", VK_LEFT);
+    add(L"RIGHT", VK_RIGHT);
+    add(L"CAPSLOCK", VK_CAPITAL);
+    add(L"CAPS", VK_CAPITAL);
+    add(L"NUMLOCK", VK_NUMLOCK);
+    add(L"SCROLLLOCK", VK_SCROLL);
+    add(L"SCROLL", VK_SCROLL);
+    add(L"PAUSE", VK_PAUSE);
+    add(L"BREAK", VK_PAUSE);
+    add(L"PRINTSCREEN", VK_SNAPSHOT);
+    add(L"PRTSC", VK_SNAPSHOT);
+    add(L"VK_SNAPSHOT", VK_SNAPSHOT);
+    add(L"APPS", VK_APPS);
+    add(L"MENU", VK_APPS);
+    add(L"LWIN", VK_LWIN);
+    add(L"RWIN", VK_RWIN);
+    add(L"BROWSER_BACK", VK_BROWSER_BACK);
+    add(L"BROWSER_FORWARD", VK_BROWSER_FORWARD);
+    add(L"BROWSER_REFRESH", VK_BROWSER_REFRESH);
+    add(L"BROWSER_STOP", VK_BROWSER_STOP);
+    add(L"BROWSER_SEARCH", VK_BROWSER_SEARCH);
+    add(L"BROWSER_FAVORITES", VK_BROWSER_FAVORITES);
+    add(L"BROWSER_HOME", VK_BROWSER_HOME);
+    add(L"VOLUME_MUTE", VK_VOLUME_MUTE);
+    add(L"VOLUME_DOWN", VK_VOLUME_DOWN);
+    add(L"VOLUME_UP", VK_VOLUME_UP);
+    add(L"MEDIA_NEXT", VK_MEDIA_NEXT_TRACK);
+    add(L"MEDIA_PREV", VK_MEDIA_PREV_TRACK);
+    add(L"MEDIA_STOP", VK_MEDIA_STOP);
+    add(L"MEDIA_PLAY", VK_MEDIA_PLAY_PAUSE);
+    add(L"LAUNCH_MAIL", VK_LAUNCH_MAIL);
+    add(L"LAUNCH_MEDIA", VK_LAUNCH_MEDIA_SELECT);
+    add(L"LAUNCH_APP1", VK_LAUNCH_APP1);
+    add(L"LAUNCH_APP2", VK_LAUNCH_APP2);
+    add(L"OEM_PLUS", VK_OEM_PLUS);
+    add(L"OEM_MINUS", VK_OEM_MINUS);
+    add(L"OEM_COMMA", VK_OEM_COMMA);
+    add(L"OEM_PERIOD", VK_OEM_PERIOD);
+    add(L"OEM_1", VK_OEM_1);
+    add(L"OEM_2", VK_OEM_2);
+    add(L"OEM_3", VK_OEM_3);
+    add(L"OEM_4", VK_OEM_4);
+    add(L"OEM_5", VK_OEM_5);
+    add(L"OEM_6", VK_OEM_6);
+    add(L"OEM_7", VK_OEM_7);
+    add(L"OEM_8", VK_OEM_8);
+    add(L"OEM_102", VK_OEM_102);
+    add(L"NUMPAD0", VK_NUMPAD0);
+    add(L"NUMPAD1", VK_NUMPAD1);
+    add(L"NUMPAD2", VK_NUMPAD2);
+    add(L"NUMPAD3", VK_NUMPAD3);
+    add(L"NUMPAD4", VK_NUMPAD4);
+    add(L"NUMPAD5", VK_NUMPAD5);
+    add(L"NUMPAD6", VK_NUMPAD6);
+    add(L"NUMPAD7", VK_NUMPAD7);
+    add(L"NUMPAD8", VK_NUMPAD8);
+    add(L"NUMPAD9", VK_NUMPAD9);
+    add(L"DECIMAL", VK_DECIMAL);
+    add(L"NUMPAD_DECIMAL", VK_DECIMAL);
+    add(L"DIVIDE", VK_DIVIDE);
+    add(L"MULTIPLY", VK_MULTIPLY);
+    add(L"SUBTRACT", VK_SUBTRACT);
+    add(L"ADD", VK_ADD);
+
+    for (UINT i = 1; i <= 24; ++i) {
+      wchar_t name[8];
+      StringCchPrintfW(name, _countof(name), L"F%u", i);
+      UINT vk = VK_F1 + (i - 1);
+      map.emplace(name, vk);
+    }
+
+    return map;
+  }();
+
+  auto it = defaultKeys.find(keyName);
+  if (it != defaultKeys.end()) {
+    return it->second;
+  }
+
   return UINT(-1);
 }
 
@@ -239,3 +385,8 @@ static UINT ParseMods(LPCWSTR modsStr) {
   if (wcsstr(modsStr, L"norepeat") != nullptr) mods |= MOD_NOREPEAT;
   return mods;
 }
+
+
+
+
+

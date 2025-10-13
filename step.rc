@@ -5,6 +5,10 @@
 
 LiteStepVersion "0.25.0"
 
+; Resolve default user folders for popup shortcuts
+SetEnv PERSONAL "$USERPROFILE$\Documents"
+SetEnv DOWNLOADS "$PERSONAL$\Downloads"
+
 ; Store theme assets in the default theme folder.
 ConfigDir "$LiteStepDir$\themes\default"
 ; Enable overlay mode when running alongside Explorer
@@ -59,5 +63,3 @@ PopupNoBevel
 *Hotkey WIN L $WINDIR$\System32\rundll32.exe user32.dll,LockWorkStation
 
 ; End of default configuration.
-
-
