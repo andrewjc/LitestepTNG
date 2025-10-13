@@ -92,9 +92,37 @@ static HRESULT GetAppPath(LPTSTR pszAppPath, DWORD cchAppPath)
 }
 
 
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-//
-// SetWelcomeScreenEvent
+static void EnsureKnownFolderEnvironment()
+{
+    struct KnownFolderEntry
+    {
+        LPCWSTR envName;
+        REFKNOWNFOLDERID folderId;
+    };
+
+    const KnownFolderEntry entries[] =
+    {
+        { L"PERSONAL", FOLDERID_Documents },
+        { L"DOWNLOADS", FOLDERID_Downloads }
+    };
+
+    for (const auto& entry : entries)
+    {
+        if (GetEnvironmentVariableW(entry.envName, nullptr, 0) > 0)
+        {
+            continue;
+        }
+
+        PWSTR knownFolderPath = nullptr;
+        if (SUCCEEDED(SHGetKnownFolderPath(entry.folderId, KF_FLAG_DEFAULT, nullptr, &knownFolderPath)))
+        {
+            SetEnvironmentVariableW(entry.envName, knownFolderPath);
+            CoTaskMemFree(knownFolderPath);
+        }
+    }
+}
+
+//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\r\n//\r\n// SetWelcomeScreenEvent
 //
 void SetWelcomeScreenEvent()
 {
@@ -216,6 +244,8 @@ int StartLitestep(HINSTANCE hInst, WORD wStartFlags, LPCTSTR pszAltConfigFile)
 
     // All child processes get this variable
     VERIFY(SetEnvironmentVariable(_T("LitestepDir"), szAppPath));
+
+    EnsureKnownFolderEnvironment();
 
     int nReturn = 0;
 
@@ -1617,5 +1647,9 @@ BOOL CLiteStep::_SetShellWindow(HWND hWnd) {
 
     return bRet;
 }
+
+
+
+
 
 

@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <cwctype>
+#include <vector>
 #include <Shlwapi.h>
 #include <strsafe.h>
 
@@ -45,6 +46,23 @@ static int gId = 0;
 // The LiteStep module class
 static LSModule gLSModule(TEXT(MODULE_NAME), TEXT(MODULE_AUTHOR), MakeVersion(MODULE_VERSION));
 
+struct WinHotkeyEntry
+{
+  UINT mods;
+  UINT key;
+  std::wstring command;
+  bool active;
+};
+
+static std::vector<WinHotkeyEntry> gWinFallbackHotkeys;
+static HHOOK gWinHotkeyHook = NULL;
+
+static void EnsureWinHook();
+static void ReleaseWinHook();
+static bool AreModifiersSatisfied(UINT mods);
+static bool IsModifierPressed(int leftVk, int rightVk);
+static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
+
 
 static void Load() {
   LoadVKeyTable();
@@ -58,6 +76,8 @@ static void Unload() {
   }
   gHotKeys.clear();
   gVKCodes.clear();
+  ReleaseWinHook();
+  gId = 0;
 }
 
 
@@ -135,7 +155,26 @@ static std::pair<bool, LPCWSTR> AddHotkey(UINT mods, UINT key, LPCWSTR command) 
 
   // Register the hotkey
   if (RegisterHotKey(gLSModule.GetMessageWindow(), gId, mods, key) == FALSE) {
-    return std::make_pair(false, L"Failed to register the hotkey. Probably already taken.");
+    DWORD error = GetLastError();
+
+    if ((mods & MOD_WIN) != 0) {
+      EnsureWinHook();
+      if (gWinHotkeyHook != NULL) {
+        WinHotkeyEntry entry;
+        entry.mods = mods;
+        entry.key = key;
+        entry.command = command;
+        entry.active = false;
+        gWinFallbackHotkeys.push_back(std::move(entry));
+        return std::make_pair(true, nullptr);
+      }
+    }
+
+    if (error == ERROR_HOTKEY_ALREADY_REGISTERED) {
+      return std::make_pair(false, L"Failed to register the hotkey. Probably already taken.");
+    }
+
+    return std::make_pair(false, L"Failed to register the hotkey.");
   }
 
   // Add the hotkey definition to the map
@@ -385,6 +424,125 @@ static UINT ParseMods(LPCWSTR modsStr) {
   if (wcsstr(modsStr, L"norepeat") != nullptr) mods |= MOD_NOREPEAT;
   return mods;
 }
+
+static bool IsModifierPressed(int leftVk, int rightVk) {
+  return ((GetAsyncKeyState(leftVk) & 0x8000) != 0) || ((GetAsyncKeyState(rightVk) & 0x8000) != 0);
+}
+
+static bool AreModifiersSatisfied(UINT mods) {
+  UINT normalized = mods & ~MOD_NOREPEAT;
+
+  auto check = [&](UINT flag, int leftVk, int rightVk) {
+    bool pressed = IsModifierPressed(leftVk, rightVk);
+    if ((normalized & flag) != 0) {
+      return pressed;
+    }
+    return !pressed;
+  };
+
+  if (!check(MOD_WIN, VK_LWIN, VK_RWIN)) {
+    return false;
+  }
+  if (!check(MOD_CONTROL, VK_LCONTROL, VK_RCONTROL)) {
+    return false;
+  }
+  if (!check(MOD_ALT, VK_LMENU, VK_RMENU)) {
+    return false;
+  }
+  if (!check(MOD_SHIFT, VK_LSHIFT, VK_RSHIFT)) {
+    return false;
+  }
+
+  return true;
+}
+
+static void ReleaseWinHook() {
+  if (gWinHotkeyHook != NULL) {
+    UnhookWindowsHookEx(gWinHotkeyHook);
+    gWinHotkeyHook = NULL;
+  }
+  gWinFallbackHotkeys.clear();
+}
+
+static void EnsureWinHook() {
+  if (gWinHotkeyHook == NULL) {
+    gWinHotkeyHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, gLSModule.GetInstance(), 0);
+    if (gWinHotkeyHook == NULL) {
+      ErrorHandler::Error(ErrorHandler::Level::Warning,
+        L"Failed to install WIN-key hotkey hook.\nError %lu", GetLastError());
+    }
+  }
+}
+
+static WinHotkeyEntry* FindFallbackEntry(UINT key, UINT mods) {
+  UINT normalized = mods & ~MOD_NOREPEAT;
+  for (auto &entry : gWinFallbackHotkeys) {
+    if (entry.key == key && ((entry.mods & ~MOD_NOREPEAT) == normalized)) {
+      return &entry;
+    }
+  }
+  return nullptr;
+}
+
+static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+  if (nCode == HC_ACTION && !gWinFallbackHotkeys.empty()) {
+    const KBDLLHOOKSTRUCT* info = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+
+    if ((info->flags & LLKHF_INJECTED) != 0) {
+      return CallNextHookEx(gWinHotkeyHook, nCode, wParam, lParam);
+    }
+
+    UINT vkCode = info->vkCode;
+
+    if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+      for (auto &entry : gWinFallbackHotkeys) {
+        UINT normalized = entry.mods & ~MOD_NOREPEAT;
+        if ((normalized & MOD_WIN) == 0) {
+          continue;
+        }
+
+        if (vkCode == entry.key && AreModifiersSatisfied(entry.mods)) {
+          if (!entry.active) {
+            entry.active = true;
+            LiteStep::LSExecute(gLSModule.GetMessageWindow(), entry.command.c_str(), 0);
+          }
+          return 1;
+        }
+      }
+    } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+      for (auto &entry : gWinFallbackHotkeys) {
+        if (vkCode == entry.key) {
+          entry.active = false;
+        }
+
+        UINT normalized = entry.mods & ~MOD_NOREPEAT;
+        if ((normalized & MOD_CONTROL) && (vkCode == VK_LCONTROL || vkCode == VK_RCONTROL)) {
+          entry.active = false;
+        }
+        if ((normalized & MOD_ALT) && (vkCode == VK_LMENU || vkCode == VK_RMENU)) {
+          entry.active = false;
+        }
+        if ((normalized & MOD_SHIFT) && (vkCode == VK_LSHIFT || vkCode == VK_RSHIFT)) {
+          entry.active = false;
+        }
+      }
+
+      if (vkCode == VK_LWIN || vkCode == VK_RWIN) {
+        for (auto &entry : gWinFallbackHotkeys) {
+          entry.active = false;
+        }
+      }
+    }
+  }
+
+  return CallNextHookEx(gWinHotkeyHook, nCode, wParam, lParam);
+}
+
+
+
+
+
+
 
 
 
