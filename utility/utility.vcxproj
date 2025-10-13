@@ -75,6 +75,7 @@
   <ItemGroup>
     <ClCompile Include="debug.cpp" />
     <ClCompile Include="shellhlp.cpp" />
+    <ClCompile Include="logger.cpp" />
     <ClCompile Include="stringutility.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -90,6 +91,7 @@
     <ClInclude Include="macros.h" />
     <ClInclude Include="shellhlp.h" />
     <ClInclude Include="shlobj.h" />
+    <ClInclude Include="logger.h" />
     <ClInclude Include="stringutility.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

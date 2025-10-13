@@ -22,11 +22,90 @@
 #include "litestep.h"
 #include "../utility/macros.h"
 #include "../utility/core.hpp"
+#include "../utility/logger.h"
 
+#include <string>
 
 // How long to wait for Explorer to start up as shell, in milliseconds
 // Shouldn't use INFINITE since we may block forever in safe mode
 #define EXPLORER_WAIT_TIMEOUT   20000
+
+static std::wstring DescribeStartFlags(WORD flags)
+{
+    struct FlagEntry
+    {
+        WORD value;
+        const wchar_t* name;
+    };
+
+    const FlagEntry entries[] =
+    {
+        { LSF_RUN_STARTUPAPPS,      L"RUN_STARTUPAPPS" },
+        { LSF_FORCE_STARTUPAPPS,    L"FORCE_STARTUPAPPS" },
+        { LSF_ALTERNATE_CONFIG,     L"ALTERNATE_CONFIG" },
+        { LSF_RUN_LITESTEP,         L"RUN_LITESTEP" },
+        { LSF_RUN_EXPLORER,         L"RUN_EXPLORER" },
+        { LSF_CLOSE_EXPLORER,       L"CLOSE_EXPLORER" },
+        { LSF_OVERLAY_MODE,         L"OVERLAY_MODE" }
+    };
+
+    std::wstring description;
+
+    for (const auto& entry : entries)
+    {
+        if ((flags & entry.value) != 0)
+        {
+            if (!description.empty())
+            {
+                description.append(L", ");
+            }
+
+            description.append(entry.name);
+        }
+    }
+
+    if (description.empty())
+    {
+        description.assign(L"none");
+    }
+
+    return description;
+}
+
+static std::wstring ToWideString(LPCTSTR value)
+{
+#ifdef UNICODE
+    return value ? std::wstring(value) : std::wstring();
+#else
+    if (value == nullptr)
+    {
+        return std::wstring();
+    }
+
+    int required = MultiByteToWideChar(CP_ACP, 0, value, -1, nullptr, 0);
+    if (required <= 0)
+    {
+        return std::wstring();
+    }
+
+    std::wstring result;
+    result.resize(static_cast<size_t>(required - 1));
+
+    if (!result.empty())
+    {
+        MultiByteToWideChar(CP_ACP, 0, value, -1, result.data(), required);
+    }
+    else
+    {
+        wchar_t terminator = L'\0';
+        MultiByteToWideChar(CP_ACP, 0, value, -1, &terminator, 1);
+    }
+
+    return result;
+#endif
+}
+
+
 
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -59,7 +138,9 @@ WORD ParseCommandLine(LPCTSTR pszCommandLine, LPTSTR pszFile, DWORD cchFile)
 {
     ASSERT(pszCommandLine);
 
-    // By default, run LiteStep and startup apps
+    const std::wstring commandLineText = ToWideString(pszCommandLine);
+    Logger::Log(L"ParseCommandLine input: %ls", commandLineText.c_str());
+
     WORD wStartFlags = LSF_RUN_LITESTEP | LSF_RUN_STARTUPAPPS;
 
     TCHAR szToken[MAX_LINE_LENGTH] = { 0 };
@@ -67,30 +148,44 @@ WORD ParseCommandLine(LPCTSTR pszCommandLine, LPTSTR pszFile, DWORD cchFile)
 
     while (GetTokenW(pszNextToken, szToken, &pszNextToken, FALSE))
     {
+        const std::wstring tokenText = ToWideString(szToken);
         if (szToken[0] == '-')
         {
             if (!_tcsicmp(szToken, _T("-nostartup")))
             {
+                Logger::Log(L"Switch detected: -nostartup");
                 wStartFlags &= ~LSF_RUN_STARTUPAPPS;
             }
             else if (!_tcsicmp(szToken, _T("-startup")))
             {
+                Logger::Log(L"Switch detected: -startup");
                 wStartFlags |= LSF_FORCE_STARTUPAPPS;
             }
             else if (!_tcsicmp(szToken, _T("-explorer")))
             {
+                Logger::Log(L"Switch detected: -explorer");
                 wStartFlags &= ~(LSF_RUN_LITESTEP | LSF_CLOSE_EXPLORER);
                 wStartFlags |= LSF_RUN_EXPLORER;
             }
             else if (!_tcsicmp(szToken, _T("-closeexplorer")))
             {
+                Logger::Log(L"Switch detected: -closeexplorer");
                 wStartFlags &= ~LSF_RUN_EXPLORER;
                 wStartFlags |= LSF_CLOSE_EXPLORER;
             }
             else if (!_tcsicmp(szToken, _T("-overlay")))
             {
+                Logger::Log(L"Switch detected: -overlay");
                 wStartFlags |= LSF_OVERLAY_MODE;
                 wStartFlags &= ~LSF_CLOSE_EXPLORER;
+            }
+            else if (!_tcsicmp(szToken, _T("-nolite")))
+            {
+                Logger::Log(L"Switch detected: -nolite (deprecated)");
+            }
+            else
+            {
+                Logger::Log(L"Unknown switch encountered: %ls", tokenText.c_str());
             }
         }
         else
@@ -100,12 +195,21 @@ WORD ParseCommandLine(LPCTSTR pszCommandLine, LPTSTR pszFile, DWORD cchFile)
 
             if (dwCopied == 0 || dwCopied > cchFile)
             {
+                Logger::Log(L"Failed to resolve alternate config path for token: %ls", tokenText.c_str());
                 pszFile[0] = _T('\0');
+            }
+            else
+            {
+                const std::wstring altConfigPath = ToWideString(pszFile);
+                Logger::Log(L"Alternate config specified: %ls", altConfigPath.c_str());
             }
 
             wStartFlags |= LSF_ALTERNATE_CONFIG;
         }
     }
+
+    Logger::Log(L"ParseCommandLine resulting flags: 0x%04X (%ls)",
+        wStartFlags, DescribeStartFlags(wStartFlags).c_str());
 
     return wStartFlags;
 }
@@ -173,19 +277,33 @@ static bool ForceShutdownExistingInstance(DWORD timeoutMs)
         timeoutMs = 1;
     }
 
+    Logger::Log(L"ForceShutdownExistingInstance invoked (timeout=%u ms).", timeoutMs);
+
     SendCommandLineBang(_T("!ShutDown"), NULL);
+    Logger::Log(L"Sent !ShutDown bang to existing LiteStep instance.");
 
     HWND hExisting = FindWindow(szMainWindowClass, szMainWindowTitle);
     HANDLE hExistingProcess = NULL;
 
     if (IsWindow(hExisting))
     {
+        Logger::Log(L"Existing LiteStep main window detected; requesting graceful shutdown.");
         DWORD existingProcessId = 0;
         GetWindowThreadProcessId(hExisting, &existingProcessId);
 
         if (existingProcessId != 0)
         {
+            Logger::Log(L"Existing LiteStep process id=%u.", existingProcessId);
             hExistingProcess = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, existingProcessId);
+
+            if (!hExistingProcess)
+            {
+                Logger::Log(L"OpenProcess failed for existing LiteStep process (error=%u).", GetLastError());
+            }
+        }
+        else
+        {
+            Logger::Log(L"Unable to resolve process id for existing LiteStep window.");
         }
 
         SendMessageTimeout(hExisting, WM_SYSCOMMAND, SC_CLOSE, 0, SMTO_ABORTIFHUNG, 2000, NULL);
@@ -198,12 +316,26 @@ static bool ForceShutdownExistingInstance(DWORD timeoutMs)
                 waitSlice = timeoutMs;
             }
 
-            if (WaitForSingleObject(hExistingProcess, waitSlice) != WAIT_OBJECT_0)
+            const DWORD waitResult = WaitForSingleObject(hExistingProcess, waitSlice);
+            if (waitResult != WAIT_OBJECT_0)
             {
+                Logger::Log(L"Existing LiteStep process did not exit within %u ms, forcing termination.", waitSlice);
                 TerminateProcess(hExistingProcess, 0);
                 WaitForSingleObject(hExistingProcess, waitSlice);
             }
+            else
+            {
+                Logger::Log(L"Existing LiteStep process exited gracefully within %u ms.", waitSlice);
+            }
         }
+        else
+        {
+            Logger::Log(L"No process handle available; relying on window polling.");
+        }
+    }
+    else
+    {
+        Logger::Log(L"No LiteStep main window detected after shutdown request.");
     }
 
     if (hExistingProcess)
@@ -212,22 +344,34 @@ static bool ForceShutdownExistingInstance(DWORD timeoutMs)
         hExistingProcess = NULL;
     }
 
-    DWORD deadline = GetTickCount() + timeoutMs;
+    const DWORD startTick = GetTickCount();
+    const DWORD deadline = startTick + timeoutMs;
 
     while (GetTickCount() < deadline)
     {
         if (FindWindow(szMainWindowClass, szMainWindowTitle) == NULL)
         {
+            const DWORD elapsed = GetTickCount() - startTick;
+            Logger::Log(L"Existing LiteStep instance terminated after %u ms.", elapsed);
             return true;
         }
 
         Sleep(100);
     }
 
-    return (FindWindow(szMainWindowClass, szMainWindowTitle) == NULL);
-}
+    const bool closed = (FindWindow(szMainWindowClass, szMainWindowTitle) == NULL);
+    if (!closed)
+    {
+        Logger::Log(L"Existing LiteStep instance still running after %u ms.", timeoutMs);
+    }
+    else
+    {
+        Logger::Log(L"Existing LiteStep instance closed during final check.");
+    }
 
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    return closed;
+}
+    //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
 // HandleCommandLineBang
 // Grabs !bang command and any arguments from a command line and
@@ -320,117 +464,80 @@ bool StartExplorerShell(DWORD dwWaitTimeout)
 //
 int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR lpCmdLine, int)
 {
+    wchar_t szAppPath[MAX_PATH] = { 0 };
+    std::wstring logBasePath;
+
+    if (GetModuleFileNameW(nullptr, szAppPath, COUNTOF(szAppPath)) > 0)
+    {
+        PathRemoveFileSpecW(szAppPath);
+        logBasePath.assign(szAppPath);
+    }
+
+    Logger::Initialize(logBasePath);
+
+    LPCTSTR effectiveCmdLine = (lpCmdLine != nullptr) ? lpCmdLine : _T("");
+    const std::wstring commandLineLogText = ToWideString(effectiveCmdLine);
+    Logger::Log(L"_tWinMain starting. Command line=\"%ls\"", commandLineLogText.c_str());
+
     int nReturn = 0;
 
-    // This is safe since lpCmdLine has no leading spaces and is never NULL
-    if (lpCmdLine[0] == _T('!'))
+    if (lpCmdLine != nullptr && lpCmdLine[0] == _T('!'))
     {
-        //
-        // Mode 1: Command line !bang handling
-        //
+        Logger::Log(L"Handling command-line bang request.");
         nReturn = HandleCommandLineBang(lpCmdLine);
+        Logger::Log(L"Bang handling complete. Return code=%d", nReturn);
+        Logger::Shutdown();
+        return nReturn;
     }
-    else
+
+    TCHAR szAltConfigFile[MAX_PATH] = { 0 };
+
+    WORD wStartFlags = ParseCommandLine(
+        effectiveCmdLine, szAltConfigFile, COUNTOF(szAltConfigFile));
+
+    Logger::Log(L"Initial start flags: 0x%04X (%ls)",
+        wStartFlags, DescribeStartFlags(wStartFlags).c_str());
+
+    if (szAltConfigFile[0] != _T('\0'))
     {
-        TCHAR szAltConfigFile[MAX_PATH] = { 0 };
+        Logger::Log(L"Alternate config file requested: %ls", ToWideString(szAltConfigFile).c_str());
+    }
 
-        WORD wStartFlags = ParseCommandLine(
-            lpCmdLine, szAltConfigFile, COUNTOF(szAltConfigFile));
+    if (GetSystemMetrics(SM_CLEANBOOT))
+    {
+        Logger::Log(L"Safe mode detected. Forcing Explorer shell and skipping startup apps.");
+        wStartFlags |= LSF_RUN_EXPLORER;
+        wStartFlags &= ~LSF_RUN_STARTUPAPPS;
+    }
 
-        if (GetSystemMetrics(SM_CLEANBOOT))
+    do
+    {
+        if (wStartFlags & LSF_RUN_EXPLORER)
         {
-            // We're in safe mode. We really want Explorer to run now, in case
-            // LiteStep is the reason we're here.
-            // But if we can't, make sure we at least ignore startup apps
-            // (see docs for GetSystemMetrics(SM_CLEANBOOT))
-            wStartFlags |= LSF_RUN_EXPLORER;
-            wStartFlags &= ~LSF_RUN_STARTUPAPPS;
+            Logger::Log(L"Attempting to start Explorer as shell.");
+
+            if (StartExplorerShell(EXPLORER_WAIT_TIMEOUT))
+            {
+                Logger::Log(L"Explorer shell started successfully. Disabling LiteStep run.");
+                wStartFlags &= ~LSF_RUN_LITESTEP;
+            }
+            else
+            {
+                Logger::Log(L"Explorer shell failed to start within timeout.");
+                wStartFlags &= ~LSF_RUN_EXPLORER;
+            }
         }
 
-        do
+        if (wStartFlags & LSF_RUN_LITESTEP)
         {
-            if (wStartFlags & LSF_RUN_EXPLORER)
+            Logger::Log(L"Preparing LiteStep launch (flags=0x%04X).", wStartFlags);
+
+            HANDLE hMutex = NULL;
+            bool allowLiteStep = true;
+
+            if (IsOtherInstanceRunning(&hMutex))
             {
-                //
-                // Mode 2: (Try to) start Explorer
-                //
-                if (StartExplorerShell(EXPLORER_WAIT_TIMEOUT))
-                {
-                    // Explorer started as shell, no need try LiteStep as well
-                    wStartFlags &= ~LSF_RUN_LITESTEP;
-                }
-                else
-                {
-                    wStartFlags &= ~LSF_RUN_EXPLORER;
-                }
-            }
-
-            if (wStartFlags & LSF_RUN_LITESTEP)
-            {
-                HANDLE hMutex = NULL;
-                bool allowLiteStep = true;
-
-                if (IsOtherInstanceRunning(&hMutex))
-                {
-                    if (hMutex)
-                    {
-                        CloseHandle(hMutex);
-                        hMutex = NULL;
-                    }
-
-                    const DWORD existingInstanceTimeout = 15000;
-
-                    if (!ForceShutdownExistingInstance(existingInstanceTimeout))
-                    {
-                        MessageBox(NULL,
-                            L"LiteStep could not close the previously running instance.",
-                            L"LiteStep",
-                            MB_ICONERROR | MB_OK);
-                        allowLiteStep = false;
-                        nReturn = LRV_NO_STEP;
-                    }
-                    else
-                    {
-                        const DWORD waitDeadline = GetTickCount() + existingInstanceTimeout;
-                        bool obtainedMutex = false;
-
-                        while (GetTickCount() < waitDeadline)
-                        {
-                            HANDLE hRetry = NULL;
-
-                            if (!IsOtherInstanceRunning(&hRetry))
-                            {
-                                hMutex = hRetry;
-                                obtainedMutex = true;
-                                break;
-                            }
-
-                            if (hRetry)
-                            {
-                                CloseHandle(hRetry);
-                                hRetry = NULL;
-                            }
-
-                            Sleep(100);
-                        }
-
-                        if (!obtainedMutex)
-                        {
-                            MessageBox(NULL,
-                                L"LiteStep could not take ownership after closing the previous instance.",
-                                L"LiteStep",
-                                MB_ICONERROR | MB_OK);
-                            allowLiteStep = false;
-                            nReturn = LRV_NO_STEP;
-                        }
-                    }
-                }
-
-                if (allowLiteStep && (wStartFlags & LSF_RUN_LITESTEP))
-                {
-                    // Mode 3b: Start the shell once we are the only instance
-                    nReturn = StartLitestep(hInst, wStartFlags, szAltConfigFile);
-                }
+                Logger::Log(L"Another LiteStep instance detected. Initiating shutdown.");
 
                 if (hMutex)
                 {
@@ -438,21 +545,95 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR lpCmdLine, int)
                     hMutex = NULL;
                 }
 
-                if (!allowLiteStep)
+                const DWORD existingInstanceTimeout = 15000;
+
+                if (!ForceShutdownExistingInstance(existingInstanceTimeout))
                 {
-                    wStartFlags &= ~LSF_RUN_LITESTEP;
+                    Logger::Log(L"Failed to shut down existing LiteStep within %u ms.", existingInstanceTimeout);
+                    MessageBox(NULL,
+                        L"LiteStep could not close the previously running instance.",
+                        L"LiteStep",
+                        MB_ICONERROR | MB_OK);
+                    allowLiteStep = false;
+                    nReturn = LRV_NO_STEP;
                 }
-                else if (nReturn == LRV_EXPLORER_START)
+                else
                 {
-                    // User wants Explorer as shell anyway
-                    wStartFlags |= LSF_RUN_EXPLORER;
+                    Logger::Log(L"Waiting for LiteStep mutex ownership after shutdown request.");
+
+                    const DWORD waitDeadline = GetTickCount() + existingInstanceTimeout;
+                    bool obtainedMutex = false;
+
+                    while (GetTickCount() < waitDeadline)
+                    {
+                        HANDLE hRetry = NULL;
+
+                        if (!IsOtherInstanceRunning(&hRetry))
+                        {
+                            hMutex = hRetry;
+                            obtainedMutex = true;
+                            break;
+                        }
+
+                        if (hRetry)
+                        {
+                            CloseHandle(hRetry);
+                            hRetry = NULL;
+                        }
+
+                        Sleep(100);
+                    }
+
+                    if (!obtainedMutex)
+                    {
+                        Logger::Log(L"Timed out waiting for LiteStep mutex after shutdown sequence.");
+                        MessageBox(NULL,
+                            L"LiteStep could not take ownership after closing the previous instance.",
+                            L"LiteStep",
+                            MB_ICONERROR | MB_OK);
+                        allowLiteStep = false;
+                        nReturn = LRV_NO_STEP;
+                    }
+                    else
+                    {
+                        Logger::Log(L"LiteStep mutex acquired after shutting down previous instance.");
+                    }
                 }
             }
-        } while (nReturn == LRV_EXPLORER_START && (wStartFlags & LSF_RUN_LITESTEP));
-    }
 
+            if (allowLiteStep && (wStartFlags & LSF_RUN_LITESTEP))
+            {
+                Logger::Log(L"Invoking StartLitestep.");
+                nReturn = StartLitestep(hInst, wStartFlags, szAltConfigFile);
+                Logger::Log(L"StartLitestep returned %d.", nReturn);
+            }
+
+            if (hMutex)
+            {
+                CloseHandle(hMutex);
+                hMutex = NULL;
+                Logger::Log(L"Released LiteStep mutex handle.");
+            }
+
+            if (!allowLiteStep)
+            {
+                Logger::Log(L"LiteStep launch aborted due to existing instance conflict.");
+                wStartFlags &= ~LSF_RUN_LITESTEP;
+            }
+            else if (nReturn == LRV_EXPLORER_START)
+            {
+                Logger::Log(L"LiteStep requested Explorer start; scheduling Explorer launch.");
+                wStartFlags |= LSF_RUN_EXPLORER;
+            }
+        }
+    } while (nReturn == LRV_EXPLORER_START && (wStartFlags & LSF_RUN_LITESTEP));
+
+    Logger::Log(L"LiteStep shutting down with return code %d.", nReturn);
+    Logger::Shutdown();
     return nReturn;
 }
+
+
 
 
 

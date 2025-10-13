@@ -21,6 +21,7 @@
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 #include "StartupRunner.h"
 #include "../utility/core.hpp"
+#include "../utility/logger.h"
 #include <regstr.h>
 
 
@@ -50,15 +51,28 @@ StartupRunner::~StartupRunner()
 
 void StartupRunner::Run(BOOL bForce)
 {
-    CloseHandle(LSCreateThread("StartupRunner",
-        StartupRunner::_ThreadProc, (LPVOID)(INT_PTR)bForce, NULL));
-}
+    Logger::Log(L"StartupRunner::Run invoked (force=%d).", static_cast<int>(bForce));
 
+    HANDLE hThread = LSCreateThread("StartupRunner",
+        StartupRunner::_ThreadProc, (LPVOID)(INT_PTR)bForce, NULL);
+
+    if (hThread)
+    {
+        Logger::Log(L"StartupRunner worker thread created (handle=%p).", hThread);
+        CloseHandle(hThread);
+    }
+    else
+    {
+        Logger::Log(L"StartupRunner worker thread creation failed (error=%u).", GetLastError());
+    }
+}
 
 DWORD WINAPI StartupRunner::_ThreadProc(LPVOID lpData)
 {
     bool bRunStartup = IsFirstRunThisSession(_T("StartupHasBeenRun"));
     BOOL bForceStartup = (lpData != 0);
+
+    Logger::Log(L"StartupRunner::_ThreadProc started (force=%d, firstRun=%d).", static_cast<int>(bForceStartup), static_cast<int>(bRunStartup));
 
     if (IsVistaOrAbove())
     {
@@ -71,6 +85,7 @@ DWORD WINAPI StartupRunner::_ThreadProc(LPVOID lpData)
     // regkey is created even if we're in "force startup" mode
     if (bRunStartup || bForceStartup)
     {
+        Logger::Log(L"StartupRunner executing startup sequence.");
         // Need to call CoInitializeEx for ShellExecuteEx
         VERIFY_HR(CoInitializeEx(
             NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
@@ -105,6 +120,7 @@ DWORD WINAPI StartupRunner::_ThreadProc(LPVOID lpData)
         //
         if (bHKLMRunOnce)
         {
+            Logger::Log(L"StartupRunner running HKLM\\RunOnce keys.");
             _RunRegKeys(HKEY_LOCAL_MACHINE, REGSTR_PATH_RUNONCE,
                 (ERK_RUNSUBKEYS | ERK_DELETE |
                  ERK_WAITFOR_QUIT | ERK_WIN64_BOTH));
@@ -114,21 +130,27 @@ DWORD WINAPI StartupRunner::_ThreadProc(LPVOID lpData)
 
         if (bHKLMRun)
         {
+            Logger::Log(L"StartupRunner running HKLM\\Run keys.");
             _RunRegKeys(HKEY_LOCAL_MACHINE, REGSTR_PATH_RUN, ERK_WIN64_BOTH);
         }
 
+        Logger::Log(L"StartupRunner running HKLM policy Run keys.");
         _RunRegKeys(HKEY_LOCAL_MACHINE, REGSTR_PATH_RUN_POLICY, ERK_NONE);
+        Logger::Log(L"StartupRunner running HKCU policy Run keys.");
         _RunRegKeys(HKEY_CURRENT_USER, REGSTR_PATH_RUN_POLICY, ERK_NONE);
 
         if (bHKCURun)
         {
+            Logger::Log(L"StartupRunner running HKCU\\Run keys.");
             _RunRegKeys(HKEY_CURRENT_USER, REGSTR_PATH_RUN, ERK_NONE);
         }
 
+        Logger::Log(L"StartupRunner running Startup menu entries.");
         _RunStartupMenu();
 
         if (bHKCURunOnce)
         {
+            Logger::Log(L"StartupRunner running HKCU\\RunOnce keys.");
             _RunRegKeys(HKEY_CURRENT_USER, REGSTR_PATH_RUNONCE,
                 (ERK_RUNSUBKEYS | ERK_DELETE));
         }
@@ -136,6 +158,7 @@ DWORD WINAPI StartupRunner::_ThreadProc(LPVOID lpData)
         CoUninitialize();
     }
 
+    Logger::Log(L"StartupRunner::_ThreadProc exiting (return=%d).", static_cast<int>(bRunStartup));
     return bRunStartup;
 }
 

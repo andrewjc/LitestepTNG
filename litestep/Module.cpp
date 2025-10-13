@@ -24,6 +24,7 @@
 #include "../utility/macros.h"
 #include "../utility/core.hpp"
 #include "../utility/stringutility.h"
+#include "../utility/logger.h"
 
 #include <process.h>
 
@@ -90,6 +91,7 @@ bool Module::_LoadDll()
 
     if (!m_hInstance)
     {
+        Logger::Log(L"Attempting to load module DLL: %ls", m_wzLocation.c_str());
         // Modules like popup2 like to call SetErrorMode. While that may not be
         // good style, there is little we can do about it. However, LoadLibrary
         // usually produces helpful error messages such as
@@ -100,6 +102,7 @@ bool Module::_LoadDll()
 
         if ((m_hInstance = LoadLibraryW(m_wzLocation.c_str())) != nullptr)
         {
+            Logger::Log(L"Loaded module DLL %ls.", m_wzLocation.c_str());
             AssignToFunction(m_pInit, (initModuleProc) GetProcAddress(
                 m_hInstance, "initModuleW"));
 
@@ -136,6 +139,7 @@ bool Module::_LoadDll()
 
             if (m_pInit == nullptr)
             {
+                Logger::Log(L"Module %ls missing init entry point.", m_wzLocation.c_str());
                 RESOURCE_STR(nullptr, IDS_INITMODULEEXNOTFOUND_ERROR,
                     L"Error: Could not find initModule().\n"
                     L"\n"
@@ -144,6 +148,7 @@ bool Module::_LoadDll()
             }
             else if (m_pQuit == nullptr)
             {
+                Logger::Log(L"Module %ls missing quit entry point.", m_wzLocation.c_str());
                 RESOURCE_STR(nullptr, IDS_QUITMODULENOTFOUND_ERROR,
                     L"Error: Could not find quitModule().\n"
                     L"\n"
@@ -152,11 +157,13 @@ bool Module::_LoadDll()
             else
             {
                 bReturn = true;
+                Logger::Log(L"Module %ls initialized successfully.", m_wzLocation.c_str());
             }
         }
         else
         {
             HRESULT hrError = HrGetLastError();
+            Logger::Log(L"Failed to load module DLL %ls (hr=0x%08X).", m_wzLocation.c_str(), hrError);
 
 #if defined(_WIN64)
             if (GetModuleArchitecture(m_wzLocation.c_str()) == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
@@ -204,6 +211,7 @@ bool Module::_LoadDll()
 
         if (!bReturn)
         {
+            Logger::Log(L"Module %ls load failed; displaying error dialog.", m_wzLocation.c_str());
             LPCWSTR pwzFileName = PathFindFileNameW(m_wzLocation.c_str());
 
             RESOURCE_MSGBOX_F(pwzFileName, MB_ICONERROR);
@@ -214,6 +222,10 @@ bool Module::_LoadDll()
                 m_hInstance = nullptr;
             }
         }
+    }
+    else
+    {
+        Logger::Log(L"Module DLL already loaded: %ls", m_wzLocation.c_str());
     }
 
     return bReturn;
@@ -260,6 +272,7 @@ Module::~Module()
 bool Module::Init(HWND hMainWindow, const std::wstring& sAppPath)
 {
     ASSERT(NULL == m_hInstance);
+    Logger::Log(L"Module::Init %ls (flags=0x%08X).", m_wzLocation.c_str(), m_dwFlags);
 
     DWORD dwStartTime = 0;
     __int64 iStartTime, iEndTime, iFrequency;
@@ -295,10 +308,14 @@ bool Module::Init(HWND hMainWindow, const std::wstring& sAppPath)
             m_hThread = (HANDLE)_beginthreadex(&sa, 0, Module::ThreadProc,
                 this, 0, (UINT*)&m_dwThreadID);
             bResult = true;
+            Logger::Log(L"Module %ls launched threaded init (thread id=%lu).", m_wzLocation.c_str(), static_cast<unsigned long>(m_dwThreadID));
         }
         else
         {
-            bResult = CallInit() == 0;
+            Logger::Log(L"Module %ls invoking synchronous init.", m_wzLocation.c_str());
+            const int initResult = CallInit();
+            bResult = (initResult == 0);
+            Logger::Log(L"Module %ls synchronous init returned %d.", m_wzLocation.c_str(), initResult);
         }
 
         if (QueryPerformanceCounter((LARGE_INTEGER*)&iEndTime) == FALSE ||
@@ -312,8 +329,11 @@ bool Module::Init(HWND hMainWindow, const std::wstring& sAppPath)
         }
     }
 
+    Logger::Log(L"Module::Init %ls final result: %s (%lu ms).", m_wzLocation.c_str(), bResult ? L"succeeded" : L"failed", static_cast<unsigned long>(m_dwLoadTime));
+
     return bResult;
 }
+
 
 
 int Module::CallInit()
@@ -332,14 +352,18 @@ void Module::CallQuit()
 
 void Module::Quit()
 {
+    Logger::Log(L"Module::Quit %ls.", m_wzLocation.c_str());
+
     if (m_hInstance)
     {
         if (m_dwFlags & LS_MODULE_THREADED)
         {
+            Logger::Log(L"Posting WM_DESTROY to module thread %lu.", static_cast<unsigned long>(m_dwThreadID));
             PostThreadMessage(m_dwThreadID, WM_DESTROY, 0, (LPARAM)this);
         }
         else
         {
+            Logger::Log(L"Calling module quit synchronously for %ls.", m_wzLocation.c_str());
             CallQuit();
         }
     }
@@ -349,13 +373,15 @@ void Module::Quit()
 UINT __stdcall Module::ThreadProc(void* dllModPtr)
 {
     Module* dllMod = (Module*)dllModPtr;
+    Logger::Log(L"Module thread started for %ls.", dllMod->m_wzLocation.c_str());
 
 #if defined(MSVC_DEBUG)
     LPCTSTR pszFileName = PathFindFileName(dllMod->m_wzLocation.c_str());
     DbgSetCurrentThreadName(WCSTOMBS(pszFileName));
 #endif
 
-    dllMod->CallInit();
+    const int initResult = dllMod->CallInit();
+    Logger::Log(L"Module thread init returned %d for %ls.", initResult, dllMod->m_wzLocation.c_str());
 
     // We must use a copy of our event, and hope no one has closed it before
     // waiting for it to be signaled.  See: TakeThread() member function.
@@ -378,6 +404,7 @@ UINT __stdcall Module::ThreadProc(void* dllModPtr)
         }
     }
 
+    Logger::Log(L"Module thread exiting for %ls.", dllMod->m_wzLocation.c_str());
     return 0;
 }
 
