@@ -39,6 +39,7 @@
 #include "StartupRunner.h"
 #include "Utility.h"
 #include "../lsapi/lsapiInit.h"
+#include "../lsapi/lsapi.h"
 #include "../lsapi/ThreadedBangCommand.h"
 #include "../utility/macros.h"
 #include "../utility/core.hpp"
@@ -578,11 +579,11 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
 
     // Initialize OLE/COM
     hr = OleInitialize(NULL);
-    const bool overlayFlagForced = ((wStartFlags & LSF_OVERLAY_MODE) != 0);
+    const bool overlayForcedByArgs = ((wStartFlags & LSF_OVERLAY_MODE) != 0);
     const bool closeExplorerForced = ((wStartFlags & LSF_CLOSE_EXPLORER) != 0);
     const bool rcOverlayDefault = GetRCBoolW(L"LSOverlayMode", FALSE);
 
-    if (rcOverlayDefault && !closeExplorerForced)
+    if (rcOverlayDefault && !overlayForcedByArgs && !closeExplorerForced)
     {
         wStartFlags |= LSF_OVERLAY_MODE;
         wStartFlags &= ~LSF_CLOSE_EXPLORER;
@@ -590,7 +591,7 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
 
     bool explorerDetected = (FindWindow(L"Shell_TrayWnd", NULL) != NULL);
 
-    if (explorerDetected && !overlayFlagForced && !closeExplorerForced)
+    if (explorerDetected && !overlayForcedByArgs && !closeExplorerForced)
     {
         UINT promptFlags = MB_ICONQUESTION | MB_SYSTEMMODAL |
             MB_SETFOREGROUND | MB_YESNOCANCEL;
@@ -632,6 +633,7 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
         SetEnvironmentVariable(L"LSOverlayMode", NULL);
     }
 
+    LSSetVariableW(L"LSOverlayMode", m_bOverlayMode ? L"true" : L"false");
 
     // Order of precedence: 1) shift key, 2) command line flags, 3) step.rc
     if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) ||
@@ -1883,9 +1885,3 @@ BOOL CLiteStep::_SetShellWindow(HWND hWnd) {
 
     return bRet;
 }
-
-
-
-
-
-
