@@ -67,6 +67,7 @@ StartButtonFontColor #FFFFFFFF
 StartButtonTextVerticalAlign Middle
 StartButtonTextAlign Center
 StartButtonText Start
-StartButtonOn LeftClickUp none !PopupStartMenu
-StartButtonOn RightClickUp none !Popup
+StartButtonOn LeftClickUp !PopupStartMenu
+StartButtonOn RightClickUp !Popup
+
 
