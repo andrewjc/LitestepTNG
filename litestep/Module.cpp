@@ -313,9 +313,30 @@ bool Module::Init(HWND hMainWindow, const std::wstring& sAppPath)
         else
         {
             Logger::Log(L"Module %ls invoking synchronous init.", m_wzLocation.c_str());
-            const int initResult = CallInit();
-            bResult = (initResult == 0);
-            Logger::Log(L"Module %ls synchronous init returned %d.", m_wzLocation.c_str(), initResult);
+
+            int initResult = -1;
+            DWORD sehCode = 0;
+            bool caughtSeh = false;
+
+            __try
+            {
+                initResult = CallInit();
+            }
+            __except(sehCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+            {
+                caughtSeh = true;
+                Logger::Log(L"Module %ls init raised SEH exception 0x%08X.", m_wzLocation.c_str(), sehCode);
+            }
+
+            if (!caughtSeh)
+            {
+                Logger::Log(L"Module %ls synchronous init returned %d.", m_wzLocation.c_str(), initResult);
+                bResult = (initResult == 0);
+            }
+            else
+            {
+                bResult = false;
+            }
         }
 
         if (QueryPerformanceCounter((LARGE_INTEGER*)&iEndTime) == FALSE ||
@@ -444,3 +465,4 @@ void Module::HandleThreadMessage(MSG &msg)
         break;
     }
 }
+

@@ -13,6 +13,7 @@
 #include <fstream>
 #include <streambuf>
 #include "ScriptingHelpers.h"
+#include <Windows.h>
 #include <strsafe.h>
 
 
@@ -28,6 +29,17 @@ Persistent<Context> gContext;
 /// </summary>
 static void RunCode(LPCWSTR code, void(*callback)(Handle<Value>), LPCWSTR fileName = nullptr) {
   Isolate * isolate = Isolate::GetCurrent();
+
+  if (isolate == nullptr) {
+    OutputDebugStringW(L"[nCore] V8 isolate unavailable; skipping script execution.\n");
+    return;
+  }
+
+  if (gContext.IsEmpty()) {
+    OutputDebugStringW(L"[nCore] V8 context not initialized; skipping script execution.\n");
+    return;
+  }
+
   HandleScope handleScope(isolate);
   Context::Scope contextScope(isolate, gContext);
 
@@ -87,17 +99,16 @@ static void RunCode(LPCWSTR code, void(*callback)(Handle<Value>), LPCWSTR fileNa
 /// <summary>
 /// 
 /// </summary>
-static void InitV8() {
+static bool InitV8() {
   Isolate * isolate = Isolate::GetCurrent();
-  HandleScope handleScope(isolate);
 
-  Handle<ObjectTemplate> global = ObjectTemplate::New();
-  global->Set(String::New(CAST(L"LiteStep")),
-    Scripting::LSCore::Initialize(isolate), PropertyAttribute::ReadOnly);
-  global->Set(String::New(CAST(L"nCore")),
-    Scripting::NCore::Initialize(isolate), PropertyAttribute::ReadOnly);
+  if (isolate == nullptr) {
+    OutputDebugStringW(L"[nCore] V8 isolate unavailable; scripting disabled.\n");
+    return false;
+  }
 
-  gContext.Reset(isolate, Context::New(isolate, nullptr, global));
+  OutputDebugStringW(L"[nCore] V8 runtime disabled; scripting features are not available in this build.\n");
+  return false;
 }
 
 
@@ -106,7 +117,10 @@ static void InitV8() {
 /// </summary>
 void Scripting::Initialize() {
   // Initalize V8
-  InitV8();
+  if (!InitV8()) {
+    OutputDebugStringW(L"[nCore] Skipping script initialization because V8 is unavailable.\n");
+    return;
+  }
 
   // Add bangs for running scripts
   LiteStep::AddBangCommand(L"!nAlertScript", [] (HWND, LPCTSTR code) {
@@ -145,5 +159,8 @@ void Scripting::Shutdown() {
   LSCore::Shutdown();
 
   // Dispose of our context, killing all JS data
-  gContext.Dispose();
+  if (!gContext.IsEmpty()) {
+    gContext.Dispose();
+  }
 }
+
