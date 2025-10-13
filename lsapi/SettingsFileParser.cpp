@@ -21,6 +21,8 @@
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 #include "SettingsFileParser.h"
 #include "MathEvaluate.h"
+#include "MathException.h"
+#include "MathParser.h"
 #include "../utility/core.hpp"
 #include "../utility/macros.h"
 #include <algorithm>
@@ -563,6 +565,66 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
             m_tzFullPath, m_uLineNumber, tzPath);
     }
 #endif // LS_CUSTOM_INCLUDEFOLDER
+    else if (_wcsicmp(ptzName, L"!SetVar") == 0)
+    {
+        WCHAR tzVariable[MAX_RCCOMMAND] = { 0 };
+        LPCWSTR pszNext = nullptr;
+
+        if (!GetTokenW(ptzValue, tzVariable, &pszNext, FALSE) || tzVariable[0] == L'\0')
+        {
+            TRACE("Syntax Error (%ls, %d): !SetVar missing variable name", m_tzFullPath, m_uLineNumber);
+            return;
+        }
+
+        WCHAR tzExpression[MAX_LINE_LENGTH] = { 0 };
+
+        if (pszNext != nullptr)
+        {
+            StringCchCopyW(tzExpression, _countof(tzExpression), pszNext);
+            _StripString(tzExpression);
+        }
+
+        std::wstring expression(tzExpression);
+        std::wstring resolvedValue;
+        bool resolved = false;
+
+        if (!expression.empty())
+        {
+            StringSet recursionSet;
+            recursionSet.insert(tzVariable);
+
+            try
+            {
+                MathParser parser(*m_pSettingsMap, expression, recursionSet, 0);
+                resolvedValue = parser.Evaluate().ToString();
+                resolved = true;
+            }
+            catch (const MathException&)
+            {
+                // Fall back to literal handling below.
+            }
+        }
+
+        if (!resolved)
+        {
+            resolvedValue = expression;
+
+            if (resolvedValue.length() >= 2)
+            {
+                const wchar_t first = resolvedValue.front();
+                const wchar_t last = resolvedValue.back();
+
+                if ((first == L'"' && last == L'"') || (first == L'\'' && last == L'\''))
+                {
+                    resolvedValue = resolvedValue.substr(1, resolvedValue.length() - 2);
+                }
+            }
+        }
+
+        std::wstring variableName(tzVariable);
+        m_pSettingsMap->erase(variableName);
+        m_pSettingsMap->insert(SettingsMap::value_type(variableName, SettingValue(resolvedValue, false)));
+    }
     else
     {
         m_pSettingsMap->insert(SettingsMap::value_type(ptzName, SettingValue(ptzValue, false)));
@@ -701,3 +763,4 @@ void FileParser::_SkipIf()
         }
     }
 }
+
