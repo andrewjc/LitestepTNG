@@ -42,6 +42,10 @@
 #include "../lsapi/ThreadedBangCommand.h"
 #include "../utility/macros.h"
 #include "../utility/core.hpp"
+#include "../utility/logger.h"
+#include <ShlObj.h>
+#include <KnownFolders.h>
+#include <Shlwapi.h>
 #include <algorithm>
 #include <functional>
 #include <Psapi.h>
@@ -122,6 +126,225 @@ static void EnsureKnownFolderEnvironment()
     }
 }
 
+static std::wstring TrimWhitespace(const std::wstring& value)
+{
+    const wchar_t* whitespace = L" \t\r\n";
+    const size_t first = value.find_first_not_of(whitespace);
+    if (first == std::wstring::npos)
+    {
+        return std::wstring();
+    }
+    const size_t last = value.find_last_not_of(whitespace);
+    return value.substr(first, last - first + 1);
+}
+
+static std::wstring NormalizeShellValue(const std::wstring& value)
+{
+    std::wstring normalized = TrimWhitespace(value);
+    if (normalized.empty())
+    {
+        return normalized;
+    }
+
+    if (normalized.front() == L'"')
+    {
+        size_t closingQuote = normalized.find_last_of(L'"');
+        if (closingQuote != std::wstring::npos && closingQuote > 0)
+        {
+            normalized = normalized.substr(1, closingQuote - 1);
+        }
+    }
+
+    size_t argumentSeparator = normalized.find_first_of(L" \t");
+    if (argumentSeparator != std::wstring::npos)
+    {
+        normalized = normalized.substr(0, argumentSeparator);
+    }
+
+    wchar_t canonical[MAX_PATH] = { 0 };
+    if (!normalized.empty() && PathCanonicalizeW(canonical, normalized.c_str()))
+    {
+        return canonical;
+    }
+
+    return normalized;
+}
+
+static bool IsCurrentUserShellLiteStep(const std::wstring& exePath)
+{
+    if (exePath.empty())
+    {
+        return false;
+    }
+
+    std::wstring expected = NormalizeShellValue(exePath);
+    if (expected.empty())
+    {
+        return false;
+    }
+
+    HKEY shellKey = nullptr;
+    LONG result = RegOpenKeyExW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+        0, KEY_READ, &shellKey);
+
+    if (result != ERROR_SUCCESS)
+    {
+        Logger::Log(L"Shell registry key open failed (error=%ld).", result);
+        return false;
+    }
+
+    wchar_t buffer[512] = { 0 };
+    DWORD type = 0;
+    DWORD bufferSize = sizeof(buffer);
+    result = RegQueryValueExW(shellKey, L"Shell", nullptr, &type,
+        reinterpret_cast<LPBYTE>(buffer), &bufferSize);
+    RegCloseKey(shellKey);
+
+    if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ))
+    {
+        if (result != ERROR_FILE_NOT_FOUND)
+        {
+            Logger::Log(L"Shell registry value query failed (error=%ld).", result);
+        }
+        return false;
+    }
+
+    std::wstring currentValue(buffer);
+    std::wstring normalizedCurrent = NormalizeShellValue(currentValue);
+
+    if (normalizedCurrent.empty())
+    {
+        return false;
+    }
+
+    return (_wcsicmp(normalizedCurrent.c_str(), expected.c_str()) == 0);
+}
+
+static std::wstring FormatWin32ErrorMessage(DWORD errorCode)
+{
+    wchar_t* messageBuffer = nullptr;
+    const DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+    const DWORD length = FormatMessageW(flags, nullptr, errorCode, 0,
+        reinterpret_cast<LPWSTR>(&messageBuffer), 0, nullptr);
+
+    std::wstring message;
+
+    if (length != 0 && messageBuffer != nullptr)
+    {
+        message.assign(messageBuffer, length);
+        LocalFree(messageBuffer);
+    }
+
+    if (message.empty())
+    {
+        wchar_t fallback[64];
+        StringCchPrintfW(fallback, _countof(fallback), L"Error %lu", errorCode);
+        message.assign(fallback);
+    }
+
+    return TrimWhitespace(message);
+}
+
+static bool ConfigureShellForCurrentUser(const std::wstring& exePath, std::wstring& errorMessage)
+{
+    std::wstring canonicalPath;
+    wchar_t canonicalBuffer[MAX_PATH] = { 0 };
+    if (PathCanonicalizeW(canonicalBuffer, exePath.c_str()))
+    {
+        canonicalPath.assign(canonicalBuffer);
+    }
+    else
+    {
+        canonicalPath = exePath;
+    }
+
+    std::wstring shellValue = canonicalPath;
+    if (shellValue.find_first_of(L" \t") != std::wstring::npos)
+    {
+        shellValue.insert(shellValue.begin(), L'"');
+        shellValue.push_back(L'"');
+    }
+
+    HKEY shellKey = nullptr;
+    LONG result = RegCreateKeyExW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+        0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &shellKey, nullptr);
+
+    if (result != ERROR_SUCCESS)
+    {
+        errorMessage = FormatWin32ErrorMessage(static_cast<DWORD>(result));
+        return false;
+    }
+
+    const DWORD dataSize = static_cast<DWORD>((shellValue.length() + 1) * sizeof(wchar_t));
+    result = RegSetValueExW(shellKey, L"Shell", 0, REG_SZ,
+        reinterpret_cast<const BYTE*>(shellValue.c_str()), dataSize);
+    RegCloseKey(shellKey);
+
+    if (result != ERROR_SUCCESS)
+    {
+        errorMessage = FormatWin32ErrorMessage(static_cast<DWORD>(result));
+        return false;
+    }
+
+    return true;
+}
+
+static void PromptForShellConfiguration(const std::wstring& exePath)
+{
+    if (exePath.empty())
+    {
+        Logger::Log(L"Executable path unavailable. Skipping shell configuration prompt.");
+        return;
+    }
+
+    if (IsCurrentUserShellLiteStep(exePath))
+    {
+        Logger::Log(L"LiteStep already configured as current user shell. No prompt needed.");
+        return;
+    }
+
+    Logger::Log(L"LiteStep is not the configured shell. Prompting user for confirmation.");
+
+    const wchar_t* promptText =
+        L"LiteStep is not currently configured as the shell for this account.\n\n"
+        L"Would you like to set LiteStep as your shell now?\n"
+        L"You will need to sign out for the change to take effect.";
+
+    const int response = MessageBoxW(nullptr, promptText, L"LiteStep Shell",
+        MB_ICONQUESTION | MB_YESNO | MB_SETFOREGROUND | MB_TOPMOST);
+
+    if (response == IDYES)
+    {
+        std::wstring errorMessage;
+        if (ConfigureShellForCurrentUser(exePath, errorMessage))
+        {
+            Logger::Log(L"Successfully updated current user shell setting.");
+            MessageBoxW(nullptr,
+                L"LiteStep has been set as your shell. Sign out or restart to apply the change.",
+                L"LiteStep Shell",
+                MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST);
+        }
+        else
+        {
+            Logger::Log(L"Failed to update shell setting: %ls", errorMessage.c_str());
+            std::wstring message = L"LiteStep could not update the shell setting.\n";
+            if (!errorMessage.empty())
+            {
+                message.append(L"\n");
+                message.append(errorMessage);
+            }
+            MessageBoxW(nullptr, message.c_str(), L"LiteStep Shell",
+                MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
+        }
+    }
+    else
+    {
+        Logger::Log(L"User declined shell configuration prompt.");
+    }
+}
+
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\r\n//\r\n// SetWelcomeScreenEvent
 //
 void SetWelcomeScreenEvent()
@@ -177,6 +400,14 @@ int StartLitestep(HINSTANCE hInst, WORD wStartFlags, LPCTSTR pszAltConfigFile)
 
     TCHAR szAppPath[MAX_PATH] = { 0 };
     TCHAR szRcPath[MAX_PATH] = { 0 };
+
+    std::wstring exePathForShellPrompt;
+
+    wchar_t szExePath[MAX_PATH] = { 0 };
+    if (LSGetModuleFileName(NULL, szExePath, COUNTOF(szExePath)))
+    {
+        exePathForShellPrompt.assign(szExePath);
+    }
 
     if (FAILED(GetAppPath(szAppPath, COUNTOF(szAppPath))))
     {
@@ -257,6 +488,11 @@ int StartLitestep(HINSTANCE hInst, WORD wStartFlags, LPCTSTR pszAltConfigFile)
         // if hr == S_FALSE the user aborted during startup
         if (hr == S_OK)
         {
+            if (!liteStep.IsOverlayMode())
+            {
+                PromptForShellConfiguration(exePathForShellPrompt);
+            }
+
             nReturn = liteStep.Run();
             hr = liteStep.Stop();
         }
