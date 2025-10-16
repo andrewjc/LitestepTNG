@@ -133,6 +133,10 @@
     <ClCompile Include="TrayNotifyIcon.cpp" />
     <ClCompile Include="TrayService.cpp" />
     <ClCompile Include="Utility.cpp" />
+    <ClCompile Include="themev2\Lexer.cpp" />
+    <ClCompile Include="themev2\Parser.cpp" />
+    <ClCompile Include="themev2\SourceManager.cpp" />
+    <ClCompile Include="themev2\ThemeEngineV2.cpp" />
     <ClCompile Include="WinMain.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -161,6 +165,11 @@
     <ClInclude Include="TrayService.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Utility.h" />
+    <ClInclude Include="themev2\Lexer.h" />
+    <ClInclude Include="themev2\Parser.h" />
+    <ClInclude Include="themev2\SourceManager.h" />
+    <ClInclude Include="themev2\ThemeEngineV2.h" />
+    <ClInclude Include="themev2\ThemeTypes.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="litestep.bmp" />
