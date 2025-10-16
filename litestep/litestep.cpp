@@ -493,6 +493,7 @@ CLiteStep::CLiteStep()
     m_hMainWindow = nullptr;
     WM_ShellHook = 0;
     m_pModuleManager = nullptr;
+    m_hasPendingDisplayChangeRecycle = false;
     m_pThemeEngineV2 = nullptr;
     m_pDataStoreManager = nullptr;
     m_pMessageManager = nullptr;
@@ -1097,6 +1098,11 @@ LRESULT CLiteStep::InternalWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
         }
         break;
 
+    case WM_DISPLAYCHANGE:
+        {
+            _HandleDisplayChange(static_cast<UINT>(wParam), LOWORD(lParam), HIWORD(lParam));
+        }
+        break;
     case WM_KEYDOWN:
     case WM_SYSCOMMAND:
         {
@@ -1493,6 +1499,11 @@ LRESULT CLiteStep::_HandleSessionChange(DWORD dwCode, DWORD /* dwSession */)
     {
         LSPlaySystemSound(L"WindowsLogoff");
     }
+    else if (dwCode == WTS_SESSION_REMOTE_CONNECT || dwCode == WTS_SESSION_REMOTE_DISCONNECT)
+    {
+        Logger::Log(L"Remote session state changed (code=%u).", dwCode);
+        _ScheduleUiRecycle(L"remote session change");
+    }
     else if (dwCode == WTS_SESSION_UNLOCK)
     {
         LSPlaySystemSound(L"WindowsLogon");
@@ -1505,6 +1516,39 @@ LRESULT CLiteStep::_HandleSessionChange(DWORD dwCode, DWORD /* dwSession */)
 //
 // _InitServies()
 //
+
+void CLiteStep::_HandleDisplayChange(UINT bitsPerPixel, UINT width, UINT height)
+{
+    Logger::Log(L"Display change detected (%ux%u @ %u bpp).", width, height, bitsPerPixel);
+    _ScheduleUiRecycle(L"display configuration change");
+}
+
+void CLiteStep::_ScheduleUiRecycle(const wchar_t* reason)
+{
+    if (m_hasPendingDisplayChangeRecycle)
+    {
+        Logger::Log(L"LiteStep UI recycle already pending; ignoring additional trigger (%ls).",
+            reason ? reason : L"unknown");
+        return;
+    }
+
+    m_hasPendingDisplayChangeRecycle = true;
+
+    if (reason && *reason)
+    {
+        Logger::Log(L"Scheduling LiteStep recycle due to %ls.", reason);
+    }
+    else
+    {
+        Logger::Log(L"Scheduling LiteStep recycle.");
+    }
+
+    if (m_hMainWindow)
+    {
+        PostMessage(m_hMainWindow, LM_RECYCLE, LR_RECYCLE, 0);
+    }
+}
+
 HRESULT CLiteStep::_InitServices(bool bSetAsShell)
 {
     IService* pService = nullptr;
@@ -1679,6 +1723,7 @@ HRESULT CLiteStep::_StartManagers()
     // - MessageManager has/needs no Start method.
     // - The DataStore manager is dynamically initialized/started.
 
+    m_hasPendingDisplayChangeRecycle = false;
     return hr;
 }
 
@@ -1850,5 +1895,4 @@ BOOL CLiteStep::_SetShellWindow(HWND hWnd) {
 
     return bRet;
 }
-
 

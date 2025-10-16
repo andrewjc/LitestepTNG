@@ -127,8 +127,11 @@ private:
     //
     // Manager Related
     //
+    void _HandleDisplayChange(UINT bitsPerPixel, UINT width, UINT height);
+    void _ScheduleUiRecycle(const wchar_t* reason);
     ModuleManager* m_pModuleManager; // = NULL;
     litestep::themev2::ThemeEngineV2* m_pThemeEngineV2; // Theme V2 engine
+    bool m_hasPendingDisplayChangeRecycle;
     DataStore* m_pDataStoreManager; // = NULL;
     MessageManager* m_pMessageManager; // = NULL;
 
