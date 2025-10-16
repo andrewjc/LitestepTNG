@@ -1,0 +1,181 @@
+#lstheme
+#include=theme.lsxstyle
+#include=constants.lsx
+
+{
+   // ===== TOP BAR =====
+   #panel {
+      name = "topbar"
+      height = 48
+      layout = "grid"
+      layoutParams = {align="top", direction="horizontal", padding=PADDING_SMALL, margin=MARGIN_SMALL}
+      children = [
+         
+         #panel { // search box
+            name = "SearchBox"
+            width = 240
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="left", direction="horizontal"}
+            children = [
+               #textbox {
+                  placeholder = "Search..."
+                  icon = "search_icon.png"
+                  style = "searchbox"
+               }
+            ]
+         },
+
+         #panel { // virtual desktop switcher
+            name = "VirtualDesktops"
+            width = 120
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="left", direction="horizontal", spacing=SPACING_SMALL}
+            children = [
+               #button { icon = "desktop_1.png" tooltip = "Desktop 1" },
+               #button { icon = "desktop_2.png" tooltip = "Desktop 2" },
+               #button { icon = "add.png" tooltip = "New Desktop" }
+            ]
+         },
+
+         #panel { // media controls
+            name = "MediaControls"
+            width = 160
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="left", direction="horizontal", spacing=SPACING_SMALL}
+            children = [
+               #button { icon="prev.png" tooltip="Previous" },
+               #button { icon="playpause.png" tooltip="Play / Pause" },
+               #button { icon="next.png" tooltip="Next" }
+            ]
+         },
+
+         #spacer { // flexible fill between controls and tray
+            width = "fill"
+            height = "100%"
+         },
+
+         #panel { // system tray icons
+            name = "SystemTray"
+            width = 160
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="right", direction="horizontal", spacing=SPACING_SMALL}
+            children = [
+               #icon { icon = "network.png" tooltip="Network" },
+               #icon { icon = "volume.png" tooltip="Volume" },
+               #icon { icon = "battery.png" tooltip="Battery" },
+               #icon { icon = "clock.png" tooltip="Clock" }
+            ]
+         },
+
+         #panel { // quick settings button
+            name = "QuickSettings"
+            width = 40
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="right"}
+            children = [
+               #button { icon = "settings.png" tooltip="Quick Settings" }
+            ]
+         }
+      ]
+   },
+
+
+   // ===== BOTTOM BAR =====
+   #panel {
+      name = "taskbar"
+      height = 56
+      layout = "grid"
+      layoutParams = {align="bottom", direction="horizontal", padding=PADDING_SMALL, margin=MARGIN_SMALL}
+      children = [
+
+         #panel { // Start button
+            name = "StartButton"
+            width = 56
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="left"}
+            children = [
+               #button {
+                  icon = "start_icon.png"
+                  tooltip = "Start"
+                  style = "startbutton"
+               }
+            ]
+         },
+
+         #panel { // Quick Launch section
+            name = "QuickLaunch"
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="left", direction="horizontal", spacing=SPACING_SMALL}
+            children = [
+               #launcher {
+                  path = "explorer.exe"
+                  icon = "explorer.exe#1"
+                  text = "File Explorer"
+               },
+               #launcher {
+                  path = "cmd.exe"
+                  icon = "cmd.exe#1"
+                  text = "Terminal"
+               },
+               #launcher {
+                  path = "chrome.exe"
+                  icon = "chrome.exe#1"
+                  text = "Browser"
+               }
+            ]
+         },
+
+         #spacer { // task area spacer between quick launch and task list
+            width = SPACER_SMALL
+            height = "100%"
+         },
+
+         #panel { // task list (running windows)
+            name = "TaskList"
+            height = "100%"
+            width = "fill"
+            layout = "stack"
+            layoutParams = {align="center", direction="horizontal", spacing=SPACING_MEDIUM}
+            children = [
+               #taskitem { icon = "explorer.exe#1" title = "File Explorer" active=true },
+               #taskitem { icon = "chrome.exe#1" title = "Chrome" },
+               #taskitem { icon = "notepad.exe#1" title = "Notepad" }
+            ]
+         },
+
+         #panel { // system indicators right-aligned
+            name = "RightTray"
+            width = 160
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="right", direction="horizontal", spacing=SPACING_SMALL}
+            children = [
+               #icon { icon = "wifi.png" tooltip="Network" },
+               #icon { icon = "volume.png" tooltip="Volume" },
+               #icon { icon = "battery.png" tooltip="Battery" }
+            ]
+         },
+
+         #panel { // clock and calendar area
+            name = "Clock"
+            width = 100
+            height = "100%"
+            layout = "stack"
+            layoutParams = {align="right"}
+            children = [
+               #textlabel {
+                  text = "12:45 PM"
+                  style = "clock"
+               }
+            ]
+         }
+      ]
+   }
+}

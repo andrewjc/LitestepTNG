@@ -1,0 +1,31 @@
+// Theme style file - allows us to separate structure and layout from style
+// Style goes here while structure/layout go in theme.lsx
+
+all {
+   radius = 4
+   padding = 2
+}
+
+#topbar {
+   background = alpha(90).blur(30)
+   borderBottom = 1px solid THEME_COLOR_ACCENT_MINOR
+   shadow = dropShadow().style("macos")
+}
+
+#taskbar {
+   background = alpha(85).blur(30)
+   borderTop = 1 solid THEME_COLOR_ACCENT_MINOR
+   shadow = dropShadow().style("windows11")
+}
+
+#startbutton {
+   radius = 8
+   background = radialGradient(center, THEME_COLOR_ACCENT, THEME_COLOR_ACCENT_MINOR)
+}
+
+#searchbox {
+   radius = 6
+   padding = 8
+   background = alpha(50).blur(15).tint(gray, 80%)
+   textColor = THEME_COLOR_TEXT
+}

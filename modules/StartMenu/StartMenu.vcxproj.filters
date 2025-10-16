@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="Version.h" />
+    <ClInclude Include="StartMenu.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ModuleEntry.cpp" />
+    <ClCompile Include="..\Popup\CommandItem.cpp" />
+    <ClCompile Include="..\Popup\ContentPopup.cpp" />
+    <ClCompile Include="..\Popup\FolderItem.cpp" />
+    <ClCompile Include="..\Popup\IconCache.cpp" />
+    <ClCompile Include="..\Popup\Popup.cpp" />
+    <ClCompile Include="..\Popup\PopupItem.cpp" />
+    <ClCompile Include="..\Popup\PopupSettings.cpp" />
+    <ClCompile Include="..\Popup\SeparatorItem.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="StartMenu.rc" />
+  </ItemGroup>
+</Project>
