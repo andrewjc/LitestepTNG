@@ -1,7 +1,5 @@
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
-// This is a part of the Litestep Shell source code.
-//
 // Copyright (C) 1997-2015  LiteStep Development Team
 //
 // This program is free software; you can redistribute it and/or
@@ -33,6 +31,7 @@
 // Managers
 #include "MessageManager.h"
 #include "ModuleManager.h"
+#include "themev2/ThemeEngineV2.h"
 
 // Other
 #include "DataStore.h"
@@ -494,6 +493,7 @@ CLiteStep::CLiteStep()
     m_hMainWindow = nullptr;
     WM_ShellHook = 0;
     m_pModuleManager = nullptr;
+    m_pThemeEngineV2 = nullptr;
     m_pDataStoreManager = nullptr;
     m_pMessageManager = nullptr;
     m_bSignalExit = false;
@@ -1188,6 +1188,7 @@ LRESULT CLiteStep::InternalWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
         {
             HRESULT hr = E_FAIL;
 
+
             if (m_pModuleManager)
             {
                 hr = m_pModuleManager->EnumModules((LSENUMMODULESPROCW)wParam,
@@ -1645,6 +1646,7 @@ HRESULT CLiteStep::_InitManagers()
     m_pMessageManager = new MessageManager();
 
     m_pModuleManager = new ModuleManager();
+    m_pThemeEngineV2 = new litestep::themev2::ThemeEngineV2();
 
     // Note:
     // - The DataStore manager is dynamically initialized/started.
@@ -1664,6 +1666,14 @@ HRESULT CLiteStep::_StartManagers()
 
     // Load modules
     m_pModuleManager->Start(this);
+    if (m_pThemeEngineV2)
+    {
+        HRESULT themeHr = m_pThemeEngineV2->Initialize();
+        if (FAILED(themeHr))
+        {
+            Logger::Log(L"ThemeEngineV2 failed to initialize (hr=0x%08X).", themeHr);
+        }
+    }
 
     // Note:
     // - MessageManager has/needs no Start method.
@@ -1680,6 +1690,10 @@ HRESULT CLiteStep::_StopManagers()
 {
     HRESULT hr = S_OK;
 
+    if (m_pThemeEngineV2)
+    {
+        m_pThemeEngineV2->Shutdown();
+    }
     m_pModuleManager->Stop();
 
     // Clean up as modules might not have
@@ -1698,6 +1712,12 @@ HRESULT CLiteStep::_StopManagers()
 //
 void CLiteStep::_CleanupManagers()
 {
+    if (m_pThemeEngineV2)
+    {
+        delete m_pThemeEngineV2;
+        m_pThemeEngineV2 = nullptr;
+    }
+
     if (m_pModuleManager)
     {
         delete m_pModuleManager;

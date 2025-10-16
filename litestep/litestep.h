@@ -35,6 +35,14 @@ class FullscreenMonitor;
 class DataStore;
 class MessageManager;
 class ModuleManager;
+namespace litestep
+{
+namespace themev2
+{
+    class ThemeEngineV2;
+}
+}
+
 
 
 // RegisterShellHook flags
@@ -120,6 +128,7 @@ private:
     // Manager Related
     //
     ModuleManager* m_pModuleManager; // = NULL;
+    litestep::themev2::ThemeEngineV2* m_pThemeEngineV2; // Theme V2 engine
     DataStore* m_pDataStoreManager; // = NULL;
     MessageManager* m_pMessageManager; // = NULL;
 
