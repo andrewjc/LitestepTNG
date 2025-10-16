@@ -230,6 +230,12 @@ EXTERN_CDECL(BOOL) AddBangCommandA(LPCSTR pszBangCommandName, BANGCOMMANDPROCA p
 EXTERN_CDECL(BOOL) AddBangCommandW(LPCWSTR pszBangCommandName, BANGCOMMANDPROCW pfnCallback);
 EXTERN_CDECL(BOOL) AddBangCommandExA(LPCSTR pszBangCommandName, BANGCOMMANDPROCEXA pfnCallback);
 EXTERN_CDECL(BOOL) AddBangCommandExW(LPCWSTR pszBangCommandName, BANGCOMMANDPROCEXW pfnCallback);
+typedef UINT64 LSTASKHANDLE;
+typedef void (CALLBACK *LSTASKEXECUTEPROC)(LPVOID context);
+typedef void (CALLBACK *LSTASKCOMPLETIONPROC)(LPVOID context, BOOL cancelled);
+EXTERN_CDECL(LSTASKHANDLE) LSPostTask(LSTASKEXECUTEPROC executeProc, LPVOID executeContext, LSTASKCOMPLETIONPROC completionProc, LPVOID completionContext);
+EXTERN_CDECL(BOOL) LSCancelTask(LSTASKHANDLE handle);
+EXTERN_CDECL(BOOL) LSWaitTask(LSTASKHANDLE handle, DWORD timeoutMs);
 EXTERN_CDECL(HBITMAP) BitmapFromIcon(HICON hIcon);
 EXTERN_CDECL(HRGN) BitmapToRegion(HBITMAP hbmBitmap, COLORREF crTransparent, COLORREF crTolerance, INT xOffset, INT yOffset);
 EXTERN_CDECL(VOID) CommandParseA(LPCSTR pszString, LPSTR pszCommandToken, LPSTR pszCommandArgs, UINT cchCommandToken, UINT cchCommandArgs);

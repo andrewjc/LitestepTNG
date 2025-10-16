@@ -104,6 +104,7 @@
     <ClCompile Include="graphics.cpp" />
     <ClCompile Include="lsapi.cpp" />
     <ClCompile Include="lsapiInit.cpp" />
+    <ClCompile Include="TaskExecutor.cpp" />
     <ClCompile Include="match.cpp">
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
@@ -129,6 +130,7 @@
     <ClInclude Include="lsapi.h" />
     <ClInclude Include="lsapidefines.h" />
     <ClInclude Include="lsapiInit.h" />
+    <ClInclude Include="StringUtils.h" />
     <ClInclude Include="MathEvaluate.h" />
     <ClInclude Include="MathException.h" />
     <ClInclude Include="MathParser.h" />
@@ -141,6 +143,7 @@
     <ClInclude Include="SettingsFileParser.h" />
     <ClInclude Include="SettingsIterator.h" />
     <ClInclude Include="SettingsManager.h" />
+    <ClInclude Include="TaskExecutor.h" />
     <ClInclude Include="ThreadedBangCommand.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
@@ -156,4 +159,8 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
+
+
+
+
 

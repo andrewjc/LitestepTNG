@@ -25,9 +25,11 @@
 #include "MathParser.h"
 #include "../utility/core.hpp"
 #include "../utility/macros.h"
+#include "../utility/logger.h"
 #include <algorithm>
 #include <vector>
-
+#include <errno.h>
+#include <stdlib.h>
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
@@ -80,10 +82,10 @@ void FileParser::ParseFile(LPCTSTR ptzFileName)
 
     if (0 == dwLen || dwLen > MAX_PATH_LENGTH)
     {
+        Logger::Log(L"Config: Unable to resolve full path for \"%ls\" (expanded from \"%ls\").", tzExpandedPath, ptzFileName);
         TRACE("Error: Can not get full path for \"%ls\"", tzExpandedPath);
         return;
     }
-
     std::list<TrailItem>::iterator check = std::find(m_trail.begin(), m_trail.end(), TrailItem(0, m_tzFullPath));
     if (check != m_trail.end())
     {
@@ -106,6 +108,7 @@ void FileParser::ParseFile(LPCTSTR ptzFileName)
         StringCchCat(trail, _countof(trail), _T("\""));
         StringCchCat(trail, _countof(trail), line);
 
+        Logger::Log(L"Config: Recursive include detected while processing \"%ls\" (from \"%ls\").", m_tzFullPath, ptzFileName);
         RESOURCE_STREX(
             GetModuleHandle(NULL), IDS_RECURSIVEINCLUDE,
             resourceTextBuffer, MAX_LINE_LENGTH,
@@ -117,14 +120,27 @@ void FileParser::ParseFile(LPCTSTR ptzFileName)
         return;
     }
 
-    _tfopen_s(&m_phFile, m_tzFullPath, _T("rt, ccs=UTF-8"));
+    errno_t openResult = _tfopen_s(&m_phFile, m_tzFullPath, _T("rt, ccs=UTF-8"));
 
-    if (nullptr == m_phFile)
+    if (openResult != 0 || m_phFile == nullptr)
     {
+        wchar_t errnoText[256] = { 0 };
+        if (openResult != 0)
+        {
+            _wcserror_s(errnoText, _countof(errnoText), openResult);
+        }
+        else
+        {
+            StringCchCopyW(errnoText, _countof(errnoText), L"Unknown failure");
+        }
+
+        Logger::Log(L"Config: Unable to open \"%ls\" (expanded from \"%ls\"): %ls (errno=%d).", m_tzFullPath, ptzFileName, errnoText, static_cast<int>(openResult));
         TRACE("Error: Can not open file \"%ls\" (Defined as \"%ls\").",
             m_tzFullPath, ptzFileName);
         return;
     }
+
+    Logger::Log(L"Config: Loaded \"%ls\".", m_tzFullPath);
 
     TRACE("Parsing \"%ls\"", m_tzFullPath);
     m_trail.push_back(TrailItem(0, m_tzFullPath));
@@ -474,11 +490,13 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
 
         if (!GetTokenW(ptzValue, tzPath, NULL, FALSE))
         {
+            Logger::Log(L"Config: Include directive missing target in \"%ls:%u\".", m_tzFullPath, m_uLineNumber);
             TRACE("Syntax Error (%ls, %d): Empty \"Include\" directive",
                 m_tzFullPath, m_uLineNumber);
             return;
         }
 
+        Logger::Log(L"Config: Including \"%ls\" from \"%ls:%u\".", tzPath, m_tzFullPath, m_uLineNumber);
         TRACE("Include (%ls, line %d): \"%ls\"",
             m_tzFullPath, m_uLineNumber, tzPath);
 
@@ -498,6 +516,7 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
 
         PathUnquoteSpaces(tzPath); // strips quotation marks from string
 
+        Logger::Log(L"Config: IncludeFolder scanning \"%ls\" from \"%ls:%u\".", tzPath, m_tzFullPath, m_uLineNumber);
         TRACE("Searching IncludeFolder (%ls, line %d): \"%ls\"",
             m_tzFullPath, m_uLineNumber, tzPath);
 
@@ -514,6 +533,7 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
 
         // List of found files
         std::vector<std::wstring> foundFiles;
+        bool anyMatches = false;
 
         //
         auto fileComparer = [] (const std::wstring s1, const std::wstring s2) -> bool {
@@ -535,6 +555,7 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
                 {
                     foundFiles.push_back(findData.cFileName);
                     std::push_heap(foundFiles.begin(), foundFiles.end(), fileComparer);
+                    anyMatches = true;
                 }
             } while (FindNextFile(hSearch, &findData) != FALSE);
 
@@ -551,6 +572,7 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
             m_trail.back().uLine = m_uLineNumber;
             if (tzFile == PathCombine(tzFile, tzPath, foundFiles.begin()->c_str()))
             {
+                Logger::Log(L"Config: Including \"%ls\" from IncludeFolder directive (%ls:%u).", tzFile, m_tzFullPath, m_uLineNumber);
                 TRACE("Found and including: \"%ls\"", tzFile);
 
                 FileParser fpParser(m_pSettingsMap, m_trail);
@@ -561,6 +583,10 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
             foundFiles.pop_back();
         }
 
+        if (!anyMatches)
+        {
+            Logger::Log(L"Config: IncludeFolder \"%ls\" produced no matches when processed from \"%ls:%u\".", tzPath, m_tzFullPath, m_uLineNumber);
+        }
         TRACE("Done searching IncludeFolder (%ls, line %d): \"%ls\"",
             m_tzFullPath, m_uLineNumber, tzPath);
     }
@@ -572,6 +598,7 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
 
         if (!GetTokenW(ptzValue, tzVariable, &pszNext, FALSE) || tzVariable[0] == L'\0')
         {
+            Logger::Log(L"Config: !SetVar directive missing variable name in \"%ls:%u\".", m_tzFullPath, m_uLineNumber);
             TRACE("Syntax Error (%ls, %d): !SetVar missing variable name", m_tzFullPath, m_uLineNumber);
             return;
         }
@@ -627,6 +654,10 @@ void FileParser::_ProcessLine(LPCTSTR ptzName, LPCTSTR ptzValue)
     }
     else
     {
+        if (_wcsicmp(ptzName, L"*NetInstallModule") == 0 || _wcsicmp(ptzName, L"*NetLoadModule") == 0)
+        {
+            Logger::Log(L"Config: Encountered %ls directive targeting \"%ls\" in \"%ls:%u\".", ptzName, ptzValue, m_tzFullPath, m_uLineNumber);
+        }
         m_pSettingsMap->insert(SettingsMap::value_type(ptzName, SettingValue(ptzValue, false)));
     }
 }
@@ -645,6 +676,7 @@ void FileParser::_ProcessIf(LPCTSTR ptzExpression)
 
     if (!MathEvaluateBool(*m_pSettingsMap, ptzExpression, result))
     {
+        Logger::Log(L"Config: Failed to evaluate expression \"%ls\" in \"%ls:%u\".", ptzExpression, m_tzFullPath, m_uLineNumber);
         TRACE("Error parsing expression \"%ls\" (%ls, line %d)",
             ptzExpression, m_tzFullPath, m_uLineNumber);
 
@@ -763,4 +795,8 @@ void FileParser::_SkipIf()
         }
     }
 }
+
+
+
+
 

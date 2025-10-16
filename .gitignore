@@ -9,3 +9,5 @@ Debug_*
 *.ncb
 *.aps
 .vs
+
+modules/DontCommit

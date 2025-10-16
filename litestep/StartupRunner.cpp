@@ -74,12 +74,8 @@ DWORD WINAPI StartupRunner::_ThreadProc(LPVOID lpData)
 
     Logger::Log(L"StartupRunner::_ThreadProc started (force=%d, firstRun=%d).", static_cast<int>(bForceStartup), static_cast<int>(bRunStartup));
 
-    if (IsVistaOrAbove())
-    {
-        // On Vista there's this additional subkey.
-        // Its meaning is currently unknown. We create but ignore it.
-        IsFirstRunThisSession(_T("RunStuffHasBeenRun"));
-    }
+    // Maintain the session marker Explorer expects when running in modern Windows.
+    IsFirstRunThisSession(_T("RunStuffHasBeenRun"));
 
     // by keeping the call to _IsFirstRunThisSession() above we make sure the
     // regkey is created even if we're in "force startup" mode
@@ -249,11 +245,10 @@ void StartupRunner::_RunShellFolderContents(int nFolder)
 
 
 //
+//
 // _CreateSessionInfoKey
 //
-// Note that unlike _IsFirstRunThisSession this function can be called
-// multiple times without side-effects.
-//
+// Generates the SessionInfo key used to track first-run flags for the current logon session.
 HKEY StartupRunner::_CreateSessionInfoKey()
 {
     HKEY hkSessionInfo = NULL;
@@ -261,48 +256,24 @@ HKEY StartupRunner::_CreateSessionInfoKey()
 
     if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
     {
-        HRESULT hr = E_FAIL;
-
-        TCHAR tzSessionInfo[128] = { 0 };
+        DWORD dwSessionId = 0;
         DWORD dwOutSize = 0;
+        TCHAR tzSessionInfo[128] = { 0 };
 
-        if (IsVistaOrAbove())
+        if (GetTokenInformation(hToken, TokenSessionId,
+            &dwSessionId, sizeof(dwSessionId), &dwOutSize))
         {
-            DWORD dwSessionId = 0;
-
-            // On Vista the subkey's name is the Session ID
-            if (GetTokenInformation(hToken, TokenSessionId,
-                &dwSessionId, sizeof(dwSessionId), &dwOutSize))
+            if (SUCCEEDED(StringCchPrintf(tzSessionInfo, COUNTOF(tzSessionInfo),
+                REGSTR_PATH_EXPLORER _T("\\\SessionInfo\\\%u"), dwSessionId)))
             {
-                hr = StringCchPrintf(tzSessionInfo, COUNTOF(tzSessionInfo),
-                    REGSTR_PATH_EXPLORER _T("\\SessionInfo\\%u"), dwSessionId);
-            }
-        }
-        else
-        {
-            TOKEN_STATISTICS tsStats = { {0} };
+                LONG lResult = RegCreateKeyEx(
+                    HKEY_CURRENT_USER, tzSessionInfo, 0, NULL,
+                    REG_OPTION_VOLATILE, KEY_WRITE, NULL, &hkSessionInfo, NULL);
 
-            // Prior to Vista the subkey's name is the AuthenticationId
-            if (GetTokenInformation(hToken, TokenStatistics,
-                &tsStats, sizeof(tsStats), &dwOutSize))
-            {
-                hr = StringCchPrintf(tzSessionInfo, COUNTOF(tzSessionInfo),
-                    REGSTR_PATH_EXPLORER _T("\\SessionInfo\\%08x%08x"),
-                    tsStats.AuthenticationId.HighPart,
-                    tsStats.AuthenticationId.LowPart);
-            }
-        }
-
-        if (SUCCEEDED(hr))
-        {
-            // Finally open the SessionInfo key
-            LONG lResult = RegCreateKeyEx(
-                HKEY_CURRENT_USER, tzSessionInfo, 0, NULL,
-                REG_OPTION_VOLATILE, KEY_WRITE, NULL, &hkSessionInfo, NULL);
-
-            if (lResult != ERROR_SUCCESS)
-            {
-                hkSessionInfo = NULL;
+                if (lResult != ERROR_SUCCESS)
+                {
+                    hkSessionInfo = NULL;
+                }
             }
         }
 
@@ -312,57 +283,47 @@ HKEY StartupRunner::_CreateSessionInfoKey()
     return hkSessionInfo;
 }
 
-
+//
 //
 // IsFirstRunThisSession()
 //
 bool StartupRunner::IsFirstRunThisSession(LPCTSTR pszSubkey)
 {
+    HKEY hkSessionInfo = _CreateSessionInfoKey();
+
+    if (hkSessionInfo == NULL)
+    {
+        return false;
+    }
+
     bool bReturn = false;
+    DWORD dwDisposition;
+    HKEY hkStartup;
 
-    if (IsOS(OS_NT))
+    LONG lResult = RegCreateKeyEx(
+        hkSessionInfo, pszSubkey, 0, NULL, REG_OPTION_VOLATILE,
+        KEY_WRITE, NULL, &hkStartup, &dwDisposition);
+
+    if (lResult == ERROR_SUCCESS)
     {
-        HKEY hkSessionInfo = _CreateSessionInfoKey();
-
-        if (hkSessionInfo != NULL)
+        RegCloseKey(hkStartup);
+        if (dwDisposition == REG_CREATED_NEW_KEY)
         {
-            DWORD dwDisposition;
-            HKEY hkStartup;
-
-            LONG lResult = RegCreateKeyEx(
-                hkSessionInfo, pszSubkey, 0, NULL, REG_OPTION_VOLATILE,
-                KEY_WRITE, NULL, &hkStartup, &dwDisposition);
-
-            RegCloseKey(hkStartup);
-
-            if (lResult == ERROR_SUCCESS &&
-                dwDisposition == REG_CREATED_NEW_KEY)
-            {
-                bReturn = true;
-            }
+            bReturn = true;
         }
+    }
 
-        RegCloseKey(hkSessionInfo);
-    }
-    else
-    {
-        bReturn = true;
-    }
+    RegCloseKey(hkSessionInfo);
 
     return bReturn;
 }
-
 
 //
 // RunRegKeys
 //
 void StartupRunner::_RunRegKeys(HKEY hkParent, LPCTSTR ptzSubKey, DWORD dwFlags)
 {
-#ifdef _WIN64
-    if (dwFlags & ERK_WIN64_BOTH)
-#else
-    if (IsOS(OS_WOW6432) && (dwFlags & ERK_WIN64_BOTH))
-#endif
+    if (LSIsRunningOn64BitWindows() && (dwFlags & ERK_WIN64_BOTH))
     {
         dwFlags &= ~ERK_WIN64_BOTH;
         _RunRegKeysWorker(hkParent, ptzSubKey, dwFlags | ERK_WIN64_KEY64);

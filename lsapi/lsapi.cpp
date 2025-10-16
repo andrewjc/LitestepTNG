@@ -21,6 +21,7 @@
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 #include "lsapi.h"
 #include "lsapiinit.h"
+#include "TaskExecutor.h"
 #include "BangCommand.h"
 #include "../utility/core.hpp"
 
@@ -139,6 +140,41 @@ BOOL AddBangCommandExA(LPCSTR pszCommand, BangCommandExA pfnBangCommand)
 {
     return AddBangCommandWorker(std::unique_ptr<wchar_t>(WCSFromMBS(pszCommand)).get(),
         pfnBangCommand);
+}
+
+
+LSTASKHANDLE LSPostTask(LSTASKEXECUTEPROC executeProc, LPVOID executeContext,
+    LSTASKCOMPLETIONPROC completionProc, LPVOID completionContext)
+{
+    TaskExecutor* executor = g_LSAPIManager.GetTaskExecutor();
+    if (!executor || executeProc == nullptr)
+    {
+        return 0;
+    }
+
+    return executor->Submit(executeProc, executeContext, completionProc, completionContext);
+}
+
+BOOL LSCancelTask(LSTASKHANDLE handle)
+{
+    TaskExecutor* executor = g_LSAPIManager.GetTaskExecutor();
+    if (!executor || handle == 0)
+    {
+        return FALSE;
+    }
+
+    return executor->Cancel(handle) ? TRUE : FALSE;
+}
+
+BOOL LSWaitTask(LSTASKHANDLE handle, DWORD timeoutMs)
+{
+    TaskExecutor* executor = g_LSAPIManager.GetTaskExecutor();
+    if (!executor || handle == 0)
+    {
+        return FALSE;
+    }
+
+    return executor->Wait(handle, timeoutMs) ? TRUE : FALSE;
 }
 
 

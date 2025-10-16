@@ -19,7 +19,7 @@
 // Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 #include "MathScanner.h"
 #include "MathException.h"
 #include <string.h> // needed for _stricmp

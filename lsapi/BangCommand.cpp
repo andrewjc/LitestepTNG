@@ -22,7 +22,7 @@
 #include "BangCommand.h"
 #include "ThreadedBangCommand.h"
 #include <memory>
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 
 
 Bang::Bang(DWORD dwThread, BangCommandW pfnBang, LPCWSTR pwzCommand)

@@ -167,17 +167,7 @@ HRESULT TrayService::Start()
             // tell ITaskbarList which window to communicate with
             m_taskbarListHandler.Start(m_hTrayWnd);
 
-            if (IsVistaOrAbove())
-            {
-                // On Vista and up there's a single SSO responsible for loading
-                // all the supported objects (volume icon, network icon, etc.)
-                loadShellServiceObject(CLSID_SysTrayObject);
-            }
-            else if (IsOS(OS_WIN2000ORGREATER))
-            {
-                // On previous versions the object list is in the registry
-                loadShellServiceObjects();
-            }
+            loadShellServiceObject(CLSID_SysTrayObject);
         }
     }
 
@@ -374,50 +364,6 @@ HRESULT TrayService::loadShellServiceObject(REFCLSID rclsid)
     }
 
     return hr;
-}
-
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-//
-// loadShellServiceObjects
-//
-// Start the COM based shell services listed in the registry.
-//
-void TrayService::loadShellServiceObjects()
-{
-    HKEY hkeyServices;
-    int nCounter = 0;
-
-    LONG lErrorCode = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
-        REGSTR_PATH_SHELLSERVICEOBJECTDELAYED,
-        0, KEY_READ, &hkeyServices);
-
-    while (lErrorCode == ERROR_SUCCESS)
-    {
-        TCHAR szValueName[32] = { 0 };
-        char szData[40] = { 0 };
-        DWORD cchValueName = sizeof(szValueName) / sizeof(szValueName[0]);
-        DWORD cbData = sizeof(szData);
-        DWORD dwDataType;
-
-        lErrorCode = RegEnumValue(hkeyServices, nCounter, szValueName,
-            &cchValueName, NULL, &dwDataType, (LPBYTE)szData, &cbData);
-
-        if (lErrorCode == ERROR_SUCCESS)
-        {
-            WCHAR wszCLSID[40] = { 0 };
-            CLSID clsid = CLSID_NULL;
-
-            MultiByteToWideChar(CP_ACP, 0, szData, cbData, wszCLSID, 40);
-            CLSIDFromString(wszCLSID, &clsid);
-
-            loadShellServiceObject(clsid);
-        }
-
-        ++nCounter;
-    }
-
-    RegCloseKey(hkeyServices);
 }
 
 
@@ -2343,15 +2289,7 @@ bool TrayService::setVersionIcon(const NID_XX& nid)
 
         if (requestedVersion != 0)
         {
-            if (IsWindows7OrAbove())
-            {
-                requestedVersion = std::max<UINT>(requestedVersion, NOTIFYICON_VERSION_4);
-            }
-            else if (IsVistaOrAbove())
-            {
-                requestedVersion = std::max<UINT>(requestedVersion, NOTIFYICON_VERSION);
-            }
-
+            requestedVersion = std::max<UINT>(requestedVersion, NOTIFYICON_VERSION_4);
             lsnid.uVersion = requestedVersion;
             (*it)->SetVersion(requestedVersion);
             bReturn = notify(NIM_SETVERSION, &lsnid);

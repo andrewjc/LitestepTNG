@@ -40,6 +40,7 @@
 #include "Utility.h"
 #include "../lsapi/lsapiInit.h"
 #include "../lsapi/lsapi.h"
+#include "../lsapi/StringUtils.h"
 #include "../lsapi/ThreadedBangCommand.h"
 #include "../utility/macros.h"
 #include "../utility/core.hpp"
@@ -127,34 +128,15 @@ static void EnsureKnownFolderEnvironment()
     }
 }
 
-static std::wstring TrimWhitespace(const std::wstring& value)
-{
-    const wchar_t* whitespace = L" \t\r\n";
-    const size_t first = value.find_first_not_of(whitespace);
-    if (first == std::wstring::npos)
-    {
-        return std::wstring();
-    }
-    const size_t last = value.find_last_not_of(whitespace);
-    return value.substr(first, last - first + 1);
-}
-
 static std::wstring NormalizeShellValue(const std::wstring& value)
 {
-    std::wstring normalized = TrimWhitespace(value);
+    std::wstring normalized = lsapi::StringUtils::TrimCopy(value);
     if (normalized.empty())
     {
         return normalized;
     }
 
-    if (normalized.front() == L'"')
-    {
-        size_t closingQuote = normalized.find_last_of(L'"');
-        if (closingQuote != std::wstring::npos && closingQuote > 0)
-        {
-            normalized = normalized.substr(1, closingQuote - 1);
-        }
-    }
+    normalized = lsapi::StringUtils::TrimQuotesCopy(normalized);
 
     size_t argumentSeparator = normalized.find_first_of(L" \t");
     if (argumentSeparator != std::wstring::npos)
@@ -244,7 +226,7 @@ static std::wstring FormatWin32ErrorMessage(DWORD errorCode)
         message.assign(fallback);
     }
 
-    return TrimWhitespace(message);
+    return lsapi::StringUtils::TrimCopy(message);
 }
 
 static bool ConfigureShellForCurrentUser(const std::wstring& exePath, std::wstring& errorMessage)
@@ -345,23 +327,14 @@ static void PromptForShellConfiguration(const std::wstring& exePath)
         Logger::Log(L"User declined shell configuration prompt.");
     }
 }
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\r\n//\r\n// SetWelcomeScreenEvent
+//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+//
+// SetWelcomeScreenEvent
 //
 void SetWelcomeScreenEvent()
 {
-    HANDLE hSwitchEvent = NULL;
-
-    if (IsVistaOrAbove())
-    {
-        hSwitchEvent = OpenEvent(
-            EVENT_MODIFY_STATE, FALSE, _T("ShellDesktopSwitchEvent"));
-    }
-    else
-    {
-        hSwitchEvent = OpenEvent(
-            EVENT_MODIFY_STATE, FALSE, _T("msgina: ShellReadyEvent"));
-    }
+    HANDLE hSwitchEvent = OpenEvent(
+        EVENT_MODIFY_STATE, FALSE, _T("ShellDesktopSwitchEvent"));
 
     if (hSwitchEvent)
     {
@@ -369,7 +342,6 @@ void SetWelcomeScreenEvent()
         VERIFY(CloseHandle(hSwitchEvent));
     }
 }
-
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
@@ -425,15 +397,9 @@ int StartLitestep(HINSTANCE hInst, WORD wStartFlags, LPCTSTR pszAltConfigFile)
         PathCombine(szRcPath, szAppPath, L"step.rc");
     }
 
-    if (IsVistaOrAbove())
-    {
-        // Starting with Vista (or Aero?) the shell needs to set the wallpaper.
-        // Otherwise the background remains black and SPI_GETDESKWALLPAPER
-        // returns an empty string. SETWALLPAPER_DEFAULT apparently causes
-        // SystemParametersInfo to look up the wallpaper in the registry.
-        VERIFY(SystemParametersInfo(
-            SPI_SETDESKWALLPAPER, 0, SETWALLPAPER_DEFAULT, 0));
-    }
+    // Ensure the desktop wallpaper is restored via the system configuration.
+    VERIFY(SystemParametersInfo(
+        SPI_SETDESKWALLPAPER, 0, SETWALLPAPER_DEFAULT, 0));
 
     //
     // Close the welcome screen (if required)
@@ -669,20 +635,7 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
 
                 if (_tcsicmp(pszPathName, _T("explorer.exe")) == 0)
                 {
-                    if (IsVistaOrAbove())
-                    {
-                        PostMessage(hTrayWindow, 0x5B4, 0, 0);
-                    }
-                    else if (IsOS(OS_XPORGREATER))
-                    {
-                        HWND hProgman = FindWindow(_T("Progman"), NULL);
-                        PostMessage(hProgman, WM_QUIT, 0, TRUE);
-                        PostMessage(hTrayWindow, WM_QUIT, 0, 0);
-                    }
-                    else
-                    {
-                        // Not supported
-                    }
+                    PostMessage(hTrayWindow, 0x5B4, 0, 0);
 
                     // Wait for the process to exit
                     if (WaitForSingleObject(hShellProc, 3000) != WAIT_OBJECT_0) // Wait for at most 3 seconds.
@@ -773,8 +726,8 @@ HRESULT CLiteStep::Start(HINSTANCE hInstance, WORD wStartFlags)
                 StartupRunner::Run(bForceStartup);
             }
 
-            // On Vista, the shell is responsible for playing the startup sound
-            if (IsVistaOrAbove() && StartupRunner::IsFirstRunThisSession(
+            // The shell is responsible for playing the startup sound.
+            if (StartupRunner::IsFirstRunThisSession(
                 _T("LogonSoundHasBeenPlayed")))
             {
                 LSPlaySystemSound(L"WindowsLogon");
@@ -1041,44 +994,33 @@ void CLiteStep::_RegisterShellNotifications(HWND hWnd)
     {
         m_pRegisterShellHook(NULL, RSH_REGISTER);
 
-        if (IsOS(OS_WINDOWS))
-        {
-            // c0atzin's fix for 9x
-            m_pRegisterShellHook(hWnd, RSH_REGISTER);
-        }
-        else
-        {
-            m_pRegisterShellHook(hWnd, RSH_TASKMAN);
-        }
+        m_pRegisterShellHook(hWnd, RSH_TASKMAN);
     }
 
     //
     // Register for session change notifications
     //
-    if (IsOS(OS_XPORGREATER))
+    ASSERT(m_hWtsDll == NULL);
+    m_hWtsDll = LoadLibrary(_T("WtsApi32.dll"));
+
+    if (m_hWtsDll)
     {
-        ASSERT(m_hWtsDll == NULL);
-        m_hWtsDll = LoadLibrary(_T("WtsApi32.dll"));
+        typedef BOOL (WINAPI* WTSRSNPROC)(HWND, DWORD);
 
-        if (m_hWtsDll)
+        WTSRSNPROC pWTSRegisterSessionNotification = (WTSRSNPROC)
+            GetProcAddress(m_hWtsDll, "WTSRegisterSessionNotification");
+
+        if (pWTSRegisterSessionNotification)
         {
-            typedef BOOL (WINAPI* WTSRSNPROC)(HWND, DWORD);
-
-            WTSRSNPROC pWTSRegisterSessionNotification = (WTSRSNPROC)
-                GetProcAddress(m_hWtsDll, "WTSRegisterSessionNotification");
-
-            if (pWTSRegisterSessionNotification)
-            {
-                // This needs to be fixed: We should wait for
-                // Global\TermSrvReadyEvent before calling this.
-                VERIFY(pWTSRegisterSessionNotification(
-                    hWnd, NOTIFY_FOR_THIS_SESSION));
-            }
+            // This needs to be fixed: We should wait for
+            // Global\TermSrvReadyEvent before calling this.
+            VERIFY(pWTSRegisterSessionNotification(
+                hWnd, NOTIFY_FOR_THIS_SESSION));
         }
-        else
-        {
-            TRACE("Failed to load WtsApi32.dll");
-        }
+    }
+    else
+    {
+        TRACE("Failed to load WtsApi32.dll");
     }
 }
 
@@ -1457,6 +1399,12 @@ LRESULT CLiteStep::InternalWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
                 }
                 break;
             }
+        }
+        break;
+
+    case LM_ASYNCTASKCOMPLETE:
+        {
+            g_LSAPIManager.ProcessTaskCompletionPayload(reinterpret_cast<void*>(wParam));
         }
         break;
 
@@ -1882,4 +1830,5 @@ BOOL CLiteStep::_SetShellWindow(HWND hWnd) {
 
     return bRet;
 }
+
 

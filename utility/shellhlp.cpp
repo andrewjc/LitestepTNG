@@ -23,8 +23,54 @@
 #include "core.hpp"
 #include <MMSystem.h>
 
-bool IsWindowsVersionOrGreater(WORD wMajorVersion, WORD wMinorVersion, WORD wServicePackMajor);
 
+
+bool LSIsRunningOn64BitWindows()
+{
+#if defined(_WIN64)
+    return true;
+#else
+    const HMODULE hKernel32 = GetModuleHandleW(L"KERNEL32.DLL");
+
+    if (!hKernel32)
+    {
+        return false;
+    }
+
+    using IsWow64Process2Fn = BOOL (WINAPI*)(HANDLE, USHORT*, USHORT*);
+
+    if (const auto fnIsWow64Process2 =
+        reinterpret_cast<IsWow64Process2Fn>(
+            GetProcAddress(hKernel32, "IsWow64Process2")))
+    {
+        USHORT processMachine = 0;
+        USHORT nativeMachine = 0;
+
+        if (fnIsWow64Process2(GetCurrentProcess(), &processMachine, &nativeMachine))
+        {
+            return processMachine != IMAGE_FILE_MACHINE_UNKNOWN;
+        }
+
+        return false;
+    }
+
+    using IsWow64ProcessFn = BOOL (WINAPI*)(HANDLE, PBOOL);
+
+    if (const auto fnIsWow64Process =
+        reinterpret_cast<IsWow64ProcessFn>(
+            GetProcAddress(hKernel32, "IsWow64Process")))
+    {
+        BOOL isWow64 = FALSE;
+
+        if (fnIsWow64Process(GetCurrentProcess(), &isWow64))
+        {
+            return isWow64 == TRUE;
+        }
+    }
+
+    return false;
+#endif
+}
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
@@ -87,88 +133,48 @@ HRESULT LSGetKnownFolderIDList(REFKNOWNFOLDERID rfid, PIDLIST_ABSOLUTE* ppidl)
 //
 // GetShellFolderPath
 //
-// Wrapper around SHGetSpecialFolderLocation to get around the lack of
-// SHGetSpecialFolderPath on Win95. Also fetches the QuickLaunch folder.
-//
+// Wrapper around SHGetSpecialFolderLocation and Known Folder APIs.
+// Provides access to user shell folders and the QuickLaunch folder.
 bool GetShellFolderPath(int nFolder, LPTSTR ptzPath, size_t cchPath)
 {
     ASSERT(cchPath >= MAX_PATH);
-    ASSERT(NULL != ptzPath);
+    ASSERT(ptzPath != nullptr);
 
     HRESULT hr = E_FAIL;
-
-    PIDLIST_ABSOLUTE pidl = NULL;
+    PIDLIST_ABSOLUTE pidl = nullptr;
 
     if (nFolder == LS_CSIDL_QUICKLAUNCH)
     {
-        if (IsVistaOrAbove())
-        {
-            //
-            // Vista turned the QuickLaunch folder into a "Known Folder"
-            // whose location can be customized. But it didn't retroactively
-            // get a CSIDL constant so we have to use the known folder API.
-            //
-            hr = LSGetKnownFolderIDList(FOLDERID_QuickLaunch, &pidl);
-        }
-        else
-        {
-            //
-            // Prior to Vista there is no documented way of getting the path.
-            // We try to hardcode as little as possible.
-            //
-            hr = GetShellFolderPath(CSIDL_APPDATA, ptzPath, cchPath);
-
-            if (SUCCEEDED(hr))
-            {
-                PathAppend(ptzPath,
-                    _T("Microsoft\\Internet Explorer\\Quick Launch"));
-
-                //
-                // SHGetSpecialFolderLocation only returns directories that
-                // exist, so we do the same for our custom QuickLaunch case.
-                //
-                if (!PathFileExists(ptzPath))
-                {
-                    hr = HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
-                }
-            }
-        }
+        hr = LSGetKnownFolderIDList(FOLDERID_QuickLaunch, &pidl);
+    }
+    else if (nFolder == CSIDL_ALTSTARTUP || nFolder == CSIDL_COMMON_ALTSTARTUP)
+    {
+        // Legacy alternate startup folders are not available on modern Windows.
+        ptzPath[0] = L'\0';
+        return false;
     }
     else
     {
-        // Starting with Vista, the "ALT" folders don't exist any more.
-        // SHGetSpecialFolderLocation maps them to the non-"ALT" versions.
-        if (IsVistaOrAbove() &&
-           (nFolder == CSIDL_ALTSTARTUP || nFolder == CSIDL_COMMON_ALTSTARTUP))
-        {
-            hr = E_FAIL;
-        }
-        else
-        {
-            hr = SHGetSpecialFolderLocation(NULL, nFolder, &pidl);
-        }
+        hr = SHGetSpecialFolderLocation(nullptr, nFolder, &pidl);
     }
 
-    //
-    // Convert PIDL to path
-    //
-    if (pidl != NULL)
+    if (pidl != nullptr)
     {
         if (SUCCEEDED(hr) && !SHGetPathFromIDList(pidl, ptzPath))
         {
             hr = E_FAIL;
         }
-
         CoTaskMemFree(pidl);
     }
 
     if (FAILED(hr))
     {
-        ptzPath[0] = '\0';
+        ptzPath[0] = L'\0';
     }
 
-    return (SUCCEEDED(hr));
+    return SUCCEEDED(hr);
 }
+
 
 
 //
@@ -429,8 +435,7 @@ bool LSGetModuleFileName(HINSTANCE hInst, LPTSTR pszBuffer, DWORD cchBuffer)
 //
 // LSGetModuleFileNameEx
 //
-// Wrapper around GetModuleFileNameEx, dealing with that it moved from
-// psapi to Kernel32 with Windows 7.
+// Wrapper around GetModuleFileNameEx that resolves the kernel32 export at runtime.
 //
 DWORD LSGetModuleFileNameEx(HANDLE hProcess, HMODULE hModule, LPTSTR pszBuffer, DWORD cchBuffer)
 {
@@ -440,11 +445,6 @@ DWORD LSGetModuleFileNameEx(HANDLE hProcess, HMODULE hModule, LPTSTR pszBuffer, 
     if (proc == nullptr)
     {
         proc = (GetModuleProc)GetProcAddress(GetModuleHandle(_T("Kernel32.dll")), "K32GetModuleFileNameExW");
-        if (proc == nullptr)
-        {
-            // Try pre Windows 7
-            proc = (GetModuleProc)GetProcAddress(LoadLibrary(_T("Psapi.dll")), "GetModuleFileNameExW");
-        }
     }
 
     if (proc)
@@ -459,8 +459,7 @@ DWORD LSGetModuleFileNameEx(HANDLE hProcess, HMODULE hModule, LPTSTR pszBuffer, 
 //
 // LSGetProcessImageFileName
 //
-// Wrapper around GetProcessImageFileName, dealing with that it moved from
-// psapi to Kernel32 with Windows 7.
+// Wrapper around GetProcessImageFileName that resolves the kernel32 export at runtime.
 //
 DWORD LSGetProcessImageFileName(HANDLE hProcess, LPTSTR pszBuffer, DWORD cchBuffer)
 {
@@ -470,11 +469,6 @@ DWORD LSGetProcessImageFileName(HANDLE hProcess, LPTSTR pszBuffer, DWORD cchBuff
     if (proc == nullptr)
     {
         proc = (GetImageNameProc)GetProcAddress(GetModuleHandle(_T("Kernel32.dll")), "K32GetProcessImageFileNameW");
-        if (proc == nullptr)
-        {
-            // Try pre Windows 7
-            proc = (GetImageNameProc)GetProcAddress(LoadLibrary(_T("Psapi.dll")), "GetProcessImageFileNameW");
-        }
     }
 
     if (proc)
@@ -526,26 +520,7 @@ HRESULT TryAllowSetForegroundWindow(HWND hWnd)
 
 
 //
-// IsVistaOrAbove
-//
-bool IsVistaOrAbove()
-{
-    OSVERSIONINFOEX ovi = { 0 };
-    ovi.dwOSVersionInfoSize = sizeof(ovi);
-    ovi.dwMajorVersion = 6;
-    ovi.dwPlatformId = VER_PLATFORM_WIN32_NT;
-
-    ULONGLONG uConditionMask = 0;
-    uConditionMask = VerSetConditionMask(uConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
-    uConditionMask = VerSetConditionMask(uConditionMask, VER_PLATFORMID, VER_EQUAL);
-    return VerifyVersionInfo(&ovi, VER_MAJORVERSION | VER_PLATFORMID, uConditionMask) != FALSE;
-}
-
-bool IsWindows7OrAbove()
-{
-    return IsWindowsVersionOrGreater(6, 1, 0);
-}
-
+// LSShutdownDialog
 //
 // LSShutdownDialog
 //
@@ -556,27 +531,11 @@ void LSShutdownDialog(HWND hWnd)
 
     if (fnProc)
     {
-        if (IsVistaOrAbove())
-        {
-            typedef VOID (WINAPI* ExitWindowsDialogProc)(HWND, DWORD);
+        typedef VOID (WINAPI* ExitWindowsDialogProc)(HWND, DWORD);
+        ExitWindowsDialogProc fnExitWindowsDialog = (ExitWindowsDialogProc)fnProc;
 
-            ExitWindowsDialogProc fnExitWindowsDialog = \
-                (ExitWindowsDialogProc)fnProc;
+        fnExitWindowsDialog(hWnd, 0);
 
-            // Meaning of second parameter unknown
-            fnExitWindowsDialog(hWnd, NULL);
-        }
-        else
-        {
-            typedef VOID (WINAPI* ExitWindowsDialogProc)(HWND);
-
-            ExitWindowsDialogProc fnExitWindowsDialog = \
-                (ExitWindowsDialogProc)fnProc;
-
-            fnExitWindowsDialog(hWnd);
-        }
-
-        // provide same mechansim for exiting the shell as explorer
         if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
             (GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
             (GetAsyncKeyState(VK_MENU) & 0x8000))
@@ -585,6 +544,7 @@ void LSShutdownDialog(HWND hWnd)
         }
     }
 }
+
 
 
 //
@@ -605,24 +565,12 @@ BOOL LSPlaySystemSound(LPCWSTR pwzSoundAlias)
         PlaySoundProc fnPlaySound = (PlaySoundProc)
             GetProcAddress(hWinMM, "PlaySoundW");
 
-        if (fnPlaySound)
+                if (fnPlaySound)
         {
-            // Use SND_NODEFAULT to make sure that not even a default sound is
-            // played if the sound alias has no corresponding sound set
-            // (if e.g. the user has disabled this particular sound)
-            DWORD dwFlags = SND_ALIAS | SND_NODEFAULT;
-
-            if (IsVistaOrAbove())
-            {
-                // Vista has a special volume slider for system sounds, ie. all
-                // those beeps etc. can be adjusted independently of all other
-                // sounds. SND_SYSTEM makes PlaySound use that slider.
-                dwFlags |= SND_SYSTEM;
-            }
-
+            // Use the system event sound routing and avoid fallback audio if the alias is unset.
+            DWORD dwFlags = SND_ALIAS | SND_NODEFAULT | SND_SYSTEM | SND_ASYNC;
             bResult = fnPlaySound(pwzSoundAlias, NULL, dwFlags);
         }
-
         VERIFY(FreeLibrary(hWinMM));
     }
 
@@ -708,135 +656,8 @@ HANDLE LSCreateThread(LPCSTR pszName, LPTHREAD_START_ROUTINE fnStartAddres,
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
-// GetVersionMetric
-// Helper for GetWindowsVersion
-//
-enum class WINVER_METRIC
-{
-    ANY,
-    SERVER,
-    WORKSTATION,
-    HOMESERVER
-};
-
-
-BOOL GetVersionMetric(WINVER_METRIC metric)
-{
-    // NB: OSVERSIONINFOEX is not supported on very early platforms but
-    //     those don't require such a "metric"
-    OSVERSIONINFOEXW ovi = { 0 };
-    ovi.dwOSVersionInfoSize = sizeof(ovi);
-
-    ULONGLONG dwlConditionMask = 0;
-
-    switch (metric)
-    {
-        case WINVER_METRIC::ANY:
-            return TRUE;
-
-        case WINVER_METRIC::SERVER:
-            ovi.wProductType = VER_NT_WORKSTATION;
-            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_PRODUCT_TYPE, VER_EQUAL);
-            return VerifyVersionInfoW(&ovi, VER_PRODUCT_TYPE, dwlConditionMask) == FALSE;
-
-        case WINVER_METRIC::WORKSTATION:
-            ovi.wProductType = VER_NT_WORKSTATION;
-            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_PRODUCT_TYPE, VER_EQUAL);
-            return VerifyVersionInfoW(&ovi, VER_PRODUCT_TYPE, dwlConditionMask) != FALSE;
-
-        case WINVER_METRIC::HOMESERVER:
-            ovi.wSuiteMask = VER_SUITE_WH_SERVER;
-            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_SUITENAME, VER_EQUAL);
-            return VerifyVersionInfoW(&ovi, VER_SUITENAME, dwlConditionMask) != FALSE;
-
-        default:
-            ASSERT(false);
-            break;
-    }
-
-    return FALSE;
-}
-
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-//
-// IsWindowsVersionOrGreater
-//
-// Taken from VersionHelpers.h
-//
-bool IsWindowsVersionOrGreater(WORD wMajorVersion, WORD wMinorVersion, WORD wServicePackMajor)
-{
-    OSVERSIONINFOEXW osvi = { sizeof(osvi), 0, 0, 0, 0, {0}, 0, 0 };
-    DWORDLONG        const dwlConditionMask = VerSetConditionMask(
-        VerSetConditionMask(
-        VerSetConditionMask(
-            0, VER_MAJORVERSION, VER_GREATER_EQUAL),
-               VER_MINORVERSION, VER_GREATER_EQUAL),
-               VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
-
-    osvi.dwMajorVersion = wMajorVersion;
-    osvi.dwMinorVersion = wMinorVersion;
-    osvi.wServicePackMajor = wServicePackMajor;
-
-    return VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, dwlConditionMask) != FALSE;
-}
-
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-//
 // GetWindowsVersion
 //
-UINT GetWindowsVersion()
-{
-    UINT uVersion = WINVER_UNKNOWN;
-
-    struct VerStringTable
-    {
-        WORD dwMajor;
-        WORD dwMinor;
-        WINVER_METRIC metric;
-        UINT uVersion;
-    }
-    versions[] = \
-    {
-        { 6,  4, WINVER_METRIC::SERVER,      WINVER_WINSERVER10  },
-        { 6,  4, WINVER_METRIC::WORKSTATION, WINVER_WIN10        },
-
-        { 6,  3, WINVER_METRIC::SERVER,      WINVER_WIN2012R2    },
-        { 6,  3, WINVER_METRIC::WORKSTATION, WINVER_WIN81        },
-
-        { 6,  2, WINVER_METRIC::SERVER,      WINVER_WIN2012      },
-        { 6,  2, WINVER_METRIC::WORKSTATION, WINVER_WIN8         },
-
-        { 6,  1, WINVER_METRIC::SERVER,      WINVER_WIN2008R2    },
-        { 6,  1, WINVER_METRIC::WORKSTATION, WINVER_WIN7         },
-
-        { 6,  0, WINVER_METRIC::SERVER,      WINVER_WIN2008      },
-        { 6,  0, WINVER_METRIC::WORKSTATION, WINVER_VISTA        },
-
-        // WVM_HOMESERVER should also match WVM_SERVER, so list it first
-        { 5,  2, WINVER_METRIC::HOMESERVER,  WINVER_WHS          },
-        { 5,  2, WINVER_METRIC::SERVER,      WINVER_WIN2003      },
-        { 5,  2, WINVER_METRIC::WORKSTATION, WINVER_WINXP        }, // 64-Bit
-
-        { 5,  1, WINVER_METRIC::ANY,         WINVER_WINXP        }, // 32-Bit
-        { 5,  0, WINVER_METRIC::ANY,         WINVER_WIN2000      },
-        { 4,  0, WINVER_METRIC::ANY,         WINVER_WINNT4       }
-    };
-
-    for (VerStringTable &version : versions)
-    {
-        if (IsWindowsVersionOrGreater(version.dwMajor, version.dwMinor, 0) &&
-            GetVersionMetric(version.metric))
-        {
-            uVersion = version.uVersion;
-            break;
-        }
-    }
-
-    return uVersion;
-}
-
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
@@ -847,20 +668,18 @@ BOOL LSDisableWow64FsRedirection(PVOID* ppvOldValue)
 #ifndef _WIN64
     typedef BOOL (WINAPI* Wow64DisableWow64FsRedirectionProc)(PVOID*);
 
-    HMODULE hKernel32 = GetModuleHandle(_T("kernel32.dll"));
+    HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
 
-    Wow64DisableWow64FsRedirectionProc fnWow64DisableWow64FsRedirection = \
-        (Wow64DisableWow64FsRedirectionProc)GetProcAddress(
-        hKernel32, "Wow64DisableWow64FsRedirection");
-
-    BOOL bResult = TRUE;
+    const auto fnWow64DisableWow64FsRedirection =
+        reinterpret_cast<Wow64DisableWow64FsRedirectionProc>(
+            GetProcAddress(hKernel32, "Wow64DisableWow64FsRedirection"));
 
     if (fnWow64DisableWow64FsRedirection)
     {
-        bResult = fnWow64DisableWow64FsRedirection(ppvOldValue);
+        return fnWow64DisableWow64FsRedirection(ppvOldValue);
     }
 
-    return bResult;
+    return TRUE;
 #else
     UNREFERENCED_PARAMETER(ppvOldValue);
     return TRUE;
@@ -877,20 +696,18 @@ BOOL LSRevertWow64FsRedirection(PVOID pvOldValue)
 #ifndef _WIN64
     typedef BOOL (WINAPI* Wow64RevertWow64FsRedirectionProc)(PVOID);
 
-    HMODULE hKernel32 = GetModuleHandle(_T("kernel32.dll"));
+    HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
 
-    Wow64RevertWow64FsRedirectionProc fnWow64RevertWow64FsRedirection =
-        (Wow64RevertWow64FsRedirectionProc)GetProcAddress(
-        hKernel32, "Wow64RevertWow64FsRedirection");
-
-    BOOL bResult = TRUE;
+    const auto fnWow64RevertWow64FsRedirection =
+        reinterpret_cast<Wow64RevertWow64FsRedirectionProc>(
+            GetProcAddress(hKernel32, "Wow64RevertWow64FsRedirection"));
 
     if (fnWow64RevertWow64FsRedirection)
     {
-        bResult = fnWow64RevertWow64FsRedirection(pvOldValue);
+        return fnWow64RevertWow64FsRedirection(pvOldValue);
     }
 
-    return bResult;
+    return TRUE;
 #else
     UNREFERENCED_PARAMETER(pvOldValue);
     return TRUE;
@@ -916,10 +733,10 @@ BOOL LSShellExecuteEx(LPSHELLEXECUTEINFOW lpExecInfo)
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
-// LSShellExecuteA
+// LSShellExecute
 //
 HINSTANCE LSShellExecute(HWND hwnd, LPCWSTR lpOperation, LPCWSTR lpFile,
-                          LPCWSTR lpParameters, LPCWSTR lpDirectory, INT nShow)
+                         LPCWSTR lpParameters, LPCWSTR lpDirectory, INT nShow)
 {
     PVOID pvOldValue = nullptr;
     LSDisableWow64FsRedirection(&pvOldValue);
@@ -945,19 +762,19 @@ HANDLE LSActivateActCtxForDll(LPCTSTR pszDll, PULONG_PTR pulCookie)
     typedef BOOL (WINAPI* ActivateActCtx_t)(HANDLE hCtx, ULONG_PTR* pCookie);
 
 #if defined(UNICODE)
-    CreateActCtx_t fnCreateActCtx = (CreateActCtx_t)
-        GetProcAddress(GetModuleHandle(_T("KERNEL32")), "CreateActCtxW");
+    const auto fnCreateActCtx = reinterpret_cast<CreateActCtx_t>(
+        GetProcAddress(GetModuleHandleW(L"KERNEL32"), "CreateActCtxW"));
 #else
-    CreateActCtx_t fnCreateActCtx = (CreateActCtx_t)
-        GetProcAddress(GetModuleHandle(_T("KERNEL32")), "CreateActCtxA");
+    const auto fnCreateActCtx = reinterpret_cast<CreateActCtx_t>(
+        GetProcAddress(GetModuleHandleW(L"KERNEL32"), "CreateActCtxA"));
 #endif
 
-    ActivateActCtx_t fnActivateActCtx = (ActivateActCtx_t)
-        GetProcAddress(GetModuleHandle(_T("KERNEL32")), "ActivateActCtx");
+    const auto fnActivateActCtx = reinterpret_cast<ActivateActCtx_t>(
+        GetProcAddress(GetModuleHandleW(L"KERNEL32"), "ActivateActCtx"));
 
-    if (fnCreateActCtx != NULL && fnActivateActCtx != NULL)
+    if (fnCreateActCtx != nullptr && fnActivateActCtx != nullptr)
     {
-        ACTCTX act = { 0 };
+        ACTCTX act = { };
         act.cbSize = sizeof(act);
         act.dwFlags = ACTCTX_FLAG_RESOURCE_NAME_VALID;
         act.lpSource = pszDll;
@@ -969,7 +786,7 @@ HANDLE LSActivateActCtxForDll(LPCTSTR pszDll, PULONG_PTR pulCookie)
         {
             if (!fnActivateActCtx(hContext, pulCookie))
             {
-                LSDeactivateActCtx(hContext, NULL);
+                LSDeactivateActCtx(hContext, nullptr);
                 hContext = INVALID_HANDLE_VALUE;
             }
         }
@@ -989,29 +806,19 @@ HANDLE LSActivateActCtxForClsid(REFCLSID rclsid, PULONG_PTR pulCookie)
     HANDLE hContext = INVALID_HANDLE_VALUE;
     TCHAR szCLSID[39] = { 0 };
 
-    //
-    // Get the DLL that implements the COM object in question
-    //
     if (SUCCEEDED(CLSIDToString(rclsid, szCLSID, COUNTOF(szCLSID))))
     {
         TCHAR szSubkey[MAX_PATH] = { 0 };
 
-        HRESULT hr = StringCchPrintf(szSubkey, COUNTOF(szSubkey),
-            _T("CLSID\\%ls\\InProcServer32"), szCLSID);
-
-        if (SUCCEEDED(hr))
+        if (SUCCEEDED(StringCchPrintf(szSubkey, COUNTOF(szSubkey),
+            _T("CLSID\\%ls\\InProcServer32"), szCLSID)))
         {
             TCHAR szDll[MAX_PATH] = { 0 };
             DWORD cbDll = sizeof(szDll);
 
-            LONG lres = SHGetValue(
-                HKEY_CLASSES_ROOT, szSubkey, NULL, NULL, szDll, &cbDll);
-
-            if (lres == ERROR_SUCCESS)
+            if (SHGetValue(HKEY_CLASSES_ROOT, szSubkey, nullptr, nullptr, szDll, &cbDll)
+                == ERROR_SUCCESS)
             {
-                //
-                // Activate the custom manifest (if any) of that DLL
-                //
                 hContext = LSActivateActCtxForDll(szDll, pulCookie);
             }
         }
@@ -1031,17 +838,17 @@ void LSDeactivateActCtx(HANDLE hActCtx, ULONG_PTR* pulCookie)
     typedef BOOL (WINAPI* DeactivateActCtx_t)(DWORD dwFlags, ULONG_PTR ulc);
     typedef void (WINAPI* ReleaseActCtx_t)(HANDLE hActCtx);
 
-    DeactivateActCtx_t fnDeactivateActCtx = (DeactivateActCtx_t)
-        GetProcAddress(GetModuleHandle(_T("KERNEL32")), "DeactivateActCtx");
+    const auto fnDeactivateActCtx = reinterpret_cast<DeactivateActCtx_t>(
+        GetProcAddress(GetModuleHandleW(L"KERNEL32"), "DeactivateActCtx"));
 
-    ReleaseActCtx_t fnReleaseActCtx = (ReleaseActCtx_t)
-        GetProcAddress(GetModuleHandle(_T("KERNEL32")), "ReleaseActCtx");
+    const auto fnReleaseActCtx = reinterpret_cast<ReleaseActCtx_t>(
+        GetProcAddress(GetModuleHandleW(L"KERNEL32"), "ReleaseActCtx"));
 
-    if (fnDeactivateActCtx != NULL && fnReleaseActCtx != NULL)
+    if (fnDeactivateActCtx != nullptr && fnReleaseActCtx != nullptr)
     {
         if (hActCtx != INVALID_HANDLE_VALUE)
         {
-            if (pulCookie != NULL)
+            if (pulCookie != nullptr)
             {
                 fnDeactivateActCtx(0, *pulCookie);
             }
@@ -1055,12 +862,13 @@ void LSDeactivateActCtx(HANDLE hActCtx, ULONG_PTR* pulCookie)
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
 // DescriptionFromHR
-// Retrives a description of a HRESULT error code.
+// Retrieves a description of a HRESULT error code.
 //
-HRESULT DescriptionFromHR(HRESULT hr, LPWSTR buf, size_t cchBuf) {
+HRESULT DescriptionFromHR(HRESULT hr, LPWSTR buf, size_t cchBuf)
+{
     if (FACILITY_WINDOWS == HRESULT_FACILITY(hr))
     {
-         hr = HRESULT_CODE(hr);
+        hr = HRESULT_CODE(hr);
     }
 
     if (FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM, nullptr, hr,
@@ -1071,5 +879,25 @@ HRESULT DescriptionFromHR(HRESULT hr, LPWSTR buf, size_t cchBuf) {
 
     return S_OK;
 }
+UINT GetWindowsVersion()
+{
+    using RtlGetVersionProc = LONG (WINAPI*)(LPOSVERSIONINFOW);
 
+    const auto rtlGetVersion = reinterpret_cast<RtlGetVersionProc>(
+        GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"));
+
+    OSVERSIONINFOEXW version = { };
+    version.dwOSVersionInfoSize = sizeof(version);
+
+    if (rtlGetVersion &&
+        rtlGetVersion(reinterpret_cast<LPOSVERSIONINFOW>(&version)) == 0)
+    {
+        if (version.wProductType != VER_NT_WORKSTATION)
+        {
+            return WINVER_WINSERVER10;
+        }
+    }
+
+    return WINVER_WIN10;
+}
 

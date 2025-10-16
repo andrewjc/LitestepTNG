@@ -45,8 +45,6 @@ DWORD LSGetModuleFileNameEx(HANDLE hProcess, HMODULE hModule,
     LPTSTR pszBuffer, DWORD cchBuffer);
 DWORD LSGetProcessImageFileName(HANDLE hProcess, LPTSTR pszBuffer, DWORD cchBuffer);
 HRESULT TryAllowSetForegroundWindow(HWND hWnd);
-bool IsVistaOrAbove();
-bool IsWindows7OrAbove();
 void LSShutdownDialog(HWND hWnd);
 BOOL LSPlaySystemSound(LPCWSTR pwzSoundAlias);
 HANDLE LSCreateThread(LPCSTR pszName, LPTHREAD_START_ROUTINE fnStartAddres,
@@ -54,6 +52,7 @@ HANDLE LSCreateThread(LPCSTR pszName, LPTHREAD_START_ROUTINE fnStartAddres,
 BOOL LSGUIDFromString(LPCTSTR ptzGUIDString, LPGUID pGUID);
 BOOL LSSetEnvironmentStrings(LPWCH pszStrings);
 
+bool LSIsRunningOn64BitWindows();
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
@@ -91,36 +90,11 @@ void   LSDeactivateActCtx(HANDLE hActCtx, ULONG_PTR* pulCookie);
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
 // Windows Versions
-//
 UINT GetWindowsVersion();
 
-#define WINVER_UNKNOWN  (UINT)-1
-
-// Win9x
-#define WINVER_WIN95        1
-#define WINVER_WIN98        2
-#define WINVER_WINME        3
-
-// Windows NT Workstation
-#define WINVER_WINNT4       4
-#define WINVER_WIN2000      5
-#define WINVER_WINXP        6
-#define WINVER_VISTA        7
-#define WINVER_WIN7         8
-#define WINVER_WIN8         9
-#define WINVER_WIN81        10
-#define WINVER_WIN10        11
-
-// Windows NT Server
-#define WINVER_WIN2003      12
-#define WINVER_WHS          13
-#define WINVER_WIN2008      14
-#define WINVER_WIN2008R2    15
-#define WINVER_WIN2012      16
-#define WINVER_WIN2012R2    17
-#define WINVER_WINSERVER10  18
-
-
+#define WINVER_UNKNOWN      (UINT)-1
+#define WINVER_WIN10         1
+#define WINVER_WINSERVER10   2
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //
 // HrGetLastError

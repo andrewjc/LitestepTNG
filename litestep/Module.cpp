@@ -23,7 +23,7 @@
 #include "../lsapi/ThreadedBangCommand.h"
 #include "../utility/macros.h"
 #include "../utility/core.hpp"
-#include "../utility/stringutility.h"
+#include "../lsapi/StringUtils.h"
 #include "../utility/logger.h"
 
 #include <process.h>
@@ -163,11 +163,22 @@ bool Module::_LoadDll()
         else
         {
             HRESULT hrError = HrGetLastError();
-            Logger::Log(L"Failed to load module DLL %ls (hr=0x%08X).", m_wzLocation.c_str(), hrError);
+            WCHAR errorDescription[512] = { 0 };
+            bool hasDescription = SUCCEEDED(DescriptionFromHR(hrError, errorDescription, _countof(errorDescription))) && errorDescription[0] != L'\0';
+
+            if (hasDescription)
+            {
+                Logger::Log(L"Failed to load module DLL %ls (hr=0x%08X - %ls).", m_wzLocation.c_str(), hrError, errorDescription);
+            }
+            else
+            {
+                Logger::Log(L"Failed to load module DLL %ls (hr=0x%08X).", m_wzLocation.c_str(), hrError);
+            }
 
 #if defined(_WIN64)
             if (GetModuleArchitecture(m_wzLocation.c_str()) == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
             {
+                Logger::Log(L"Module %ls has 32-bit architecture and cannot be loaded by 64-bit LiteStep.", m_wzLocation.c_str());
                 RESOURCE_STR(nullptr, IDS_MODULEWRONGARCH64_ERROR,
                     L"Error: Could not load module.\n"
                     L"\n"
@@ -176,6 +187,7 @@ bool Module::_LoadDll()
 #else
             if (GetModuleArchitecture(m_wzLocation.c_str()) == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
             {
+                Logger::Log(L"Module %ls has 64-bit architecture and cannot be loaded by 32-bit LiteStep.", m_wzLocation.c_str());
                 RESOURCE_STR(nullptr, IDS_MODULEWRONGARCH32_ERROR,
                     L"Error: Could not load module.\n"
                     L"\n"
@@ -184,6 +196,7 @@ bool Module::_LoadDll()
 #endif
             else if (PathFileExistsW(m_wzLocation.c_str()))
             {
+                Logger::Log(L"Module %ls found on disk but dependent libraries appear to be missing.", m_wzLocation.c_str());
                 RESOURCE_STR(nullptr, IDS_MODULEDEPENDENCY_ERROR,
                     L"Error: Could not load module.\n"
                     L"\n"
@@ -199,6 +212,7 @@ bool Module::_LoadDll()
             }
             else
             {
+                Logger::Log(L"Module %ls does not exist at expected path.", m_wzLocation.c_str());
                 RESOURCE_STR(nullptr, IDS_MODULENOTFOUND_ERROR,
                     L"Error: Could not locate module.\n"
                     L"\n"
@@ -465,4 +479,3 @@ void Module::HandleThreadMessage(MSG &msg)
         break;
     }
 }
-

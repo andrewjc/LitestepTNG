@@ -22,7 +22,7 @@
 #include "settingsmanager.h"
 #include "lsapiInit.h"
 #include "../utility/core.hpp"
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 
 
 LPVOID LCOpenW(LPCWSTR pwzPath)

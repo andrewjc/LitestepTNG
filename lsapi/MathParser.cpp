@@ -24,7 +24,7 @@
 #include "MathException.h"
 #include "lsapiInit.h"
 #include "../utility/core.hpp"
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>

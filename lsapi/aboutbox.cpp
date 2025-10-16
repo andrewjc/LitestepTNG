@@ -21,7 +21,7 @@
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 #include "../litestep/resource.h"
 #include "../utility/core.hpp"
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 #include <CommCtrl.h>
 #include <WindowsX.h>
 #include <math.h>
@@ -115,7 +115,7 @@ static const g_theDevTeam[] = \
 // LiteStep License Notice
 //
 static const WCHAR g_wzLicense[] = \
- L"LiteStep is a replacement shell for the standard Windows® Explorer shell.\r\n"
+ L"LiteStep is a replacement shell for the standard Windows Explorer shell.\r\n"
  L"\r\n"
  L"Copyright (C) 1997-1998  Francis Gastellu\r\n"
  L"Copyright (C) 1998-2015  LiteStep Development Team\r\n"
@@ -699,57 +699,34 @@ static HRESULT GetWinVerString(LPWSTR pwzVersion, DWORD cchVersion)
 {
     ASSERT(pwzVersion != nullptr);
 
-    UINT uVersion = GetWindowsVersion();
+    const UINT uVersion = GetWindowsVersion();
 
     LPCWSTR pwzTemp = nullptr;
 
     switch (uVersion)
     {
-    case WINVER_WIN95:   pwzTemp = L"Windows 95";            break;
-    case WINVER_WIN98:   pwzTemp = L"Windows 98";            break;
-    case WINVER_WINME:   pwzTemp = L"Windows ME";            break;
-    case WINVER_WINNT4:  pwzTemp = L"Windows NT 4.0";        break;
-    case WINVER_WIN2000: pwzTemp = L"Windows 2000";          break;
-    case WINVER_WINXP:   pwzTemp = L"Windows XP";            break;
-    case WINVER_VISTA:   pwzTemp = L"Windows Vista";         break;
-    case WINVER_WIN7:    pwzTemp = L"Windows 7";             break;
-    case WINVER_WIN8:    pwzTemp = L"Windows 8";             break;
-    case WINVER_WIN81:   pwzTemp = L"Windows 8.1";           break;
-    case WINVER_WIN10:   pwzTemp = L"Windows 10";            break;
-    case WINVER_WIN2003:
-        if (GetSystemMetrics(SM_SERVERR2))
-        {
-            pwzTemp = L"Windows Server 2003 R2";
-        }
-        else
-        {
-            pwzTemp = L"Windows Server 2003";
-        }
+    case WINVER_WIN10:
+        pwzTemp = L"Windows 10";
         break;
-    case WINVER_WHS:         pwzTemp = L"Windows Home Server";     break;
-    case WINVER_WIN2008:     pwzTemp = L"Windows Server 2008";     break;
-    case WINVER_WIN2008R2:   pwzTemp = L"Windows Server 2008 R2";  break;
-    case WINVER_WIN2012:     pwzTemp = L"Windows Server 2012";     break;
-    case WINVER_WIN2012R2:   pwzTemp = L"Windows Server 2012 R2";  break;
-    case WINVER_WINSERVER10: pwzTemp = L"Windows Server 10";       break;
-    default:                 pwzTemp = L"<Unknown Version>";       break;
+
+    case WINVER_WINSERVER10:
+        pwzTemp = L"Windows Server";
+        break;
+
+    default:
+        pwzTemp = L"Unknown Windows version";
+        break;
     }
 
     HRESULT hr = StringCchCopyW(pwzVersion, cchVersion, pwzTemp);
 
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && LSIsRunningOn64BitWindows())
     {
-#if !defined(_WIN64)
-        if (IsOS(OS_WOW6432))
-#endif
-        {
-            StringCchCatW(pwzVersion, cchVersion, L" (64-Bit)");
-        }
+        StringCchCatW(pwzVersion, cchVersion, L" (64-Bit)");
     }
 
     return hr;
 }
-
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 //

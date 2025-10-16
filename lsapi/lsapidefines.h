@@ -104,6 +104,7 @@
 #define LM_THREAD_BANGCOMMAND       9310
 #define LM_THREADREADY              9311
 #define LM_THREADFINISHED           9312
+#define LM_ASYNCTASKCOMPLETE        9313
 #endif
 
 // VWM Messages
@@ -239,6 +240,13 @@ typedef void (__cdecl *BangCommandExA) \
     (HWND hSender, LPCSTR pszCommand, LPCSTR pszArgs);
 typedef void (__cdecl *BangCommandExW) \
     (HWND hSender, LPCWSTR pszCommand, LPCWSTR pszArgs);
+
+#ifndef LSTASKHANDLE_DEFINED
+#define LSTASKHANDLE_DEFINED
+typedef UINT64 LSTASKHANDLE;
+typedef void (CALLBACK *LSTASKEXECUTEPROC)(LPVOID context);
+typedef void (CALLBACK *LSTASKCOMPLETIONPROC)(LPVOID context, BOOL cancelled);
+#endif
 
 typedef struct _LMBANGCOMMANDA
 {

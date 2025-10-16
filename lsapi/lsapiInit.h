@@ -22,9 +22,27 @@
 #if !defined(LSAPIINIT_H)
 #define LSAPIINIT_H
 
+#ifndef LSAPI_DATA
+#  if defined(LSAPI_INTERNAL)
+#    define LSAPI_DATA __declspec(dllexport)
+#  else
+#    define LSAPI_DATA __declspec(dllimport)
+#  endif
+#endif
+
 #include "BangManager.h"
+#ifndef LSAPI_API
+#  if defined(LSAPI_INTERNAL)
+#    define LSAPI_API __declspec(dllexport)
+#  else
+#    define LSAPI_API __declspec(dllimport)
+#  endif
+#endif
+
 #include "SettingsManager.h"
 #include "../utility/common.h"
+#include <memory>
+class TaskExecutor;
 
 enum ErrorType
 {
@@ -54,7 +72,7 @@ private:
     ErrorType m_et;
 };
 
-class LSAPIInit
+class LSAPI_API LSAPIInit
 {
 private:
     bool setShellFolderVariable(LPCWSTR pwzVariable, int nFolder);
@@ -84,6 +102,13 @@ public:
 
         return m_smSettingsManager;
     }
+
+    TaskExecutor* GetTaskExecutor() const
+    {
+        return m_taskExecutor.get();
+    }
+
+    void ProcessTaskCompletionPayload(void* payload);
 
     HWND GetLitestepWnd() const
     {
@@ -125,6 +150,7 @@ private:
 
     BangManager* m_bmBangManager;
     SettingsManager* m_smSettingsManager;
+    std::unique_ptr<TaskExecutor> m_taskExecutor;
 
     HWND m_hLitestepWnd;
     IClassFactory *m_pComFactory;
@@ -134,7 +160,8 @@ private:
     bool m_bIsInitialized;
 };
 
-extern LSAPIInit g_LSAPIManager;
+extern LSAPI_DATA LSAPIInit g_LSAPIManager;
 extern void SetupBangs();
 
 #endif // LSAPIINIT_H
+

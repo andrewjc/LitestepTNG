@@ -71,13 +71,6 @@ typedef struct _SHELLHOOKINFO
 
 #if defined(FIXUP_OLD_HEADERS)
 
-// IsOS constants
-#  define OS_WINDOWS                 0
-#  define OS_NT                      1
-#  define OS_WIN2000ORGREATER        7
-#  define OS_XPORGREATER            18
-#  define OS_WOW6432                30
-
 // Misc constants
 #  define ABM_SETSTATE              0x0000000a
 #  define HSHELL_HIGHBIT            0x8000
@@ -162,13 +155,9 @@ public:
 
 typedef LPVOID  (WINAPI* SHLockShared_t)(HANDLE hData, DWORD dwProcessId);
 typedef BOOL    (WINAPI* SHUnlockShared_t)(LPVOID lpData);
-typedef BOOL    (WINAPI* IsOS_t)(DWORD);
-
 
 DEFINE_DYNFUNC_ORD(SHLockShared,        "shlwapi.dll", 8);
 DEFINE_DYNFUNC_ORD(SHUnlockShared,      "shlwapi.dll", 9);
-DEFINE_DYNFUNC_ORD(IsOS,                "shlwapi.dll", 437);
-
 #endif // FIXUP_OLD_HEADERS
 
 

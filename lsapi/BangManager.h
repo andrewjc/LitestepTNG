@@ -25,7 +25,7 @@
 #include "BangCommand.h"
 #include "lsapidefines.h"
 #include "../utility/criticalsection.h"
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 #include <string>
 
 /**

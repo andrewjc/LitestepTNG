@@ -21,11 +21,12 @@
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 #include "lsapiinit.h"
 #include "lsapi.h"
+#include "TaskExecutor.h"
 #include "../utility/core.hpp"
 #include <time.h>
 #include <algorithm>
 
-LSAPIInit g_LSAPIManager;
+LSAPI_DATA LSAPIInit g_LSAPIManager;
 
 
 LSAPIInit::LSAPIInit()
@@ -43,6 +44,10 @@ LSAPIInit::LSAPIInit()
 
 LSAPIInit::~LSAPIInit()
 {
+    if (m_taskExecutor) {
+        m_taskExecutor->Shutdown();
+        m_taskExecutor.reset();
+    }
     m_bIsInitialized = false;
     delete m_bmBangManager;
     delete m_smSettingsManager;
@@ -104,6 +109,7 @@ void LSAPIInit::Initialize(LPCWSTR pwzLitestepPath, LPCWSTR pwzRcPath)
 
         // Add our internal bang commands to the Bang Manager.
         SetupBangs();
+        m_taskExecutor = std::make_unique<TaskExecutor>();
     }
     catch(LSAPIException& lse)
     {
@@ -163,6 +169,14 @@ void LSAPIInit::ReloadSettings()
 }
 
 
+
+void LSAPIInit::ProcessTaskCompletionPayload(void* payload)
+{
+    if (m_taskExecutor)
+    {
+        m_taskExecutor->ProcessCompletionPayload(payload);
+    }
+}
 void LSAPIInit::setLitestepVars()
 {
     wchar_t wzTemp[MAX_PATH];
@@ -236,70 +250,28 @@ void LSAPIInit::setLitestepVars()
     //
     // Set version identification variables
     //
-    struct VersionToVariable
-    {
-        UINT uVersion;
-        LPCWSTR pszVariable;
-    }
-    versions[] = \
-    {
-        { WINVER_WIN95,     L"Win95"      },
-        { WINVER_WIN98,     L"Win98"      },
-        { WINVER_WINME,     L"WinME"      },
+    const UINT uVersion = GetWindowsVersion();
 
-        { WINVER_WINNT4,    L"WinNT4"     },
-        { WINVER_WIN2000,   L"Win2000"    },
-        { WINVER_WINXP,     L"WinXP"      },
-        { WINVER_VISTA,     L"WinVista"   },
-        { WINVER_WIN7,      L"Win7"       },
-        { WINVER_WIN8,      L"Win8"       },
-        { WINVER_WIN81,     L"Win81"      },
+    pSM->SetVariable(L"Win10", (uVersion == WINVER_WIN10) ? L"true" : L"false");
+    pSM->SetVariable(L"WinServer10", (uVersion == WINVER_WINSERVER10) ? L"true" : L"false");
 
-        { WINVER_WIN2003,   L"Win2003"    },
-        { WINVER_WHS,       L"Win2003"    },  // WHS is Win2003 in disguise
-        { WINVER_WIN2008,   L"Win2008"    },
-        { WINVER_WIN2008R2, L"Win2008R2"  },
-        { WINVER_WIN2012,   L"Win2012"    },
-        { WINVER_WIN2012R2, L"Win2012R2"  }
+    const LPCWSTR legacyVersionFlags[] =
+    {
+        L"Win95", L"Win98", L"WinME",
+        L"WinNT4", L"Win2000", L"WinXP",
+        L"WinVista", L"Win7", L"Win8", L"Win81",
+        L"Win2003", L"Win2008", L"Win2008R2", L"Win2012", L"Win2012R2"
     };
 
-    UINT uVersion = GetWindowsVersion();
-
-    for (size_t idx = 0; idx < COUNTOF(versions); ++idx)
+    for (LPCWSTR legacyFlag : legacyVersionFlags)
     {
-        if (versions[idx].uVersion == uVersion)
-        {
-            pSM->SetVariable(versions[idx].pszVariable, L"true");
-        }
-        else
-        {
-            pSM->SetVariable(versions[idx].pszVariable, L"false");
-        }
+        pSM->SetVariable(legacyFlag, L"false");
     }
 
-    if (IsOS(OS_NT))
-    {
-        pSM->SetVariable(L"Win9x", L"false");
-        pSM->SetVariable(L"WinNT", L"true");
-    }
-    else
-    {
-        pSM->SetVariable(L"Win9x", L"true");
-        pSM->SetVariable(L"WinNT", L"false");
-    }
+    pSM->SetVariable(L"Win9x", L"false");
+    pSM->SetVariable(L"WinNT", L"true");
 
-#if defined(_WIN64)
-    pSM->SetVariable(L"Win64", L"true");
-#else
-    if (IsOS(OS_WOW6432))
-    {
-        pSM->SetVariable(L"Win64", L"true");
-    }
-    else
-    {
-        pSM->SetVariable(L"Win64", L"false");
-    }
-#endif
+    pSM->SetVariable(L"Win64", LSIsRunningOn64BitWindows() ? L"true" : L"false");
 
     // screen resolution
     StringCchPrintfW(wzTemp, MAX_PATH, L"%d", GetSystemMetrics(SM_CXSCREEN));
@@ -378,3 +350,4 @@ void LSAPIInit::getCompileTime(LPWSTR pwzValue, size_t cchValue)
             L"\"Compiled at an unknown time\"");
     }
 }
+

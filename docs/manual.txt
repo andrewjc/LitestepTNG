@@ -16,7 +16,7 @@ Contents:
 
 -- ABOUT -----------------------------------------------------------------------
 
- LiteStep is a replacement shell for the standard Windows® Explorer shell.
+ LiteStep is a replacement shell for the standard Windows Explorer shell.
 
  The Explorer shell provides the familiar desktop environment, start menu, and
  task bar.  The developers of LiteStep (and thousands of users) have found the
@@ -72,10 +72,7 @@ Contents:
 
 -- SYSTEM REQUIREMENTS ---------------------------------------------------------
 
- LiteStep requires only that you are running a 32 or 64bit version of Windows:
-
-  Windows 95, Windows 98(se), Windows ME, Windows 2000, Windows XP, Windows 2003
-  Windows Vista, Windows 7, Windows 8, Windows 8.1
+ LiteStep requires Windows 10 or Windows Server 2016 (32-bit or 64-bit).
 
  LiteStep is designed to consume less resources than the Explorer shell which it
  replaces; so there are no system requirements above and beyond that which is
@@ -93,7 +90,7 @@ Contents:
  -----
  You are about to install a replacement shell for Windows.  A shell is not a
  normal application; it runs as a special system process.  Replacing the shell
- is not a supported procedure by Microsoft®, and as such, it is possible that if
+ is not a supported procedure by Microsoft, and as such, it is possible that if
  you do something wrong, you may end up with a non functional desktop and/ or
  your system may display an erroneous error message asking you to re-install
  Windows.  Do NOT panic, a very simple solution will put you back to where you
@@ -313,11 +310,8 @@ Contents:
   ----------
    Disables running Windows startup items when loading LiteStep.
 
-   This is useful on Windows 95, Windows 98(se) and Windows ME if you need to
-   restart LiteStep.
-
-   On Windows 2000 and Windows XP this switch is not needed as startup items are
-   ran only once per session.
+   Windows 10 executes startup entries when a session begins. Use this switch
+   when restarting LiteStep and you want to skip launching those items again.
 
    Usage:
     litestep.exe -nostartup
@@ -326,10 +320,8 @@ Contents:
   --------
    Force running Windows startup items when loading LiteStep.
 
-   On Windows 2000 and Windows XP, startup items are run only once per session.
-   Using this switch overrides that behavior and forces startup item execution.
-
-   This is not useful on Windows 95/98(se)/ME as startup items are always ran.
+   LiteStep mirrors the Explorer shell by running startup entries once per
+   session. Use this switch to re-run them on demand.
 
    Usage:
     litestep.exe -startup
@@ -975,24 +967,10 @@ Contents:
   2. Conditional Expansions
   
    Win64
-   Win9X
-   WinNT
-   
-   Win2000
-   Win2003
-   Win2008
-   Win2008R2
-   Win2012
-   Win2012R2
-   Win7
-   Win8
-   Win81
-   Win95
-   Win98
-   WinME
-   WinNT4
-   WinXP
-   WinVista
+   Win10
+   WinServer10
+   (Legacy flags such as Win9X, WinNT, WinXP, etc., remain for compatibility
+    and always evaluate to false on supported systems.)
 
   3. Resource Expansions
 
@@ -1368,7 +1346,7 @@ ENDIF
    Warren Konkel (Warren)
    Brad Webb (webba)
    Edwin Man (TheMAN)
-   Från (cbjcyber)
+   Fran (cbjcyber)
    James Brown (Ender_Gcc)
    Shaheen Gandhi (Visigoth)
    Torsten Stelling (Murphy)
@@ -1420,7 +1398,7 @@ ENDIF
  B) LiteStep License Notice
  --------------------------
 
- LiteStep is a replacement shell for the standard Windows® Explorer shell.
+ LiteStep is a replacement shell for the standard Windows Explorer shell.
 
  Copyright (C) 1997-1998  Francis Gastellu
  Copyright (C) 1998-2013  LiteStep Development Team

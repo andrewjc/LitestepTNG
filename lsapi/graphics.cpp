@@ -22,7 +22,7 @@
 #include "png_support.h"
 #include "../utility/core.hpp"
 #include <algorithm>
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 
 
 static void TransparentBltLSWorker(

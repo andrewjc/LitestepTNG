@@ -22,7 +22,7 @@
 #if !defined(SETTINGSDEFINES_H)
 #define SETTINGSDEFINES_H
 
-#include "../utility/stringutility.h"
+#include "StringUtils.h"
 #include <string>
 #include <map>
 #include <set>
