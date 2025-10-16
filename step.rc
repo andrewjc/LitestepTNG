@@ -10,9 +10,8 @@ SetEnv PERSONAL "$USERPROFILE$\Documents"
 SetEnv DOWNLOADS "$PERSONAL$\Downloads"
 
 ; Store theme assets in the default theme folder.
-ConfigDir "$LiteStepDir$\themes\default"
-; Enable overlay mode when running alongside Explorer
-LSOverlayMode true
+ConfigDir "$LiteStepDir$\\themes\\glassboard"
+; Overlay mode is chosen interactively when Explorer is already running
 
 ; Core modules from nModules: comment out any entry if the module is unavailable.
 LoadModule $LiteStepDir$nCore.dll

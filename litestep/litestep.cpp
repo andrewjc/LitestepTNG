@@ -489,10 +489,7 @@ int StartLitestep(HINSTANCE hInst, WORD wStartFlags, LPCTSTR pszAltConfigFile)
         // if hr == S_FALSE the user aborted during startup
         if (hr == S_OK)
         {
-            if (!liteStep.IsOverlayMode())
-            {
-                PromptForShellConfiguration(exePathForShellPrompt);
-            }
+            PromptForShellConfiguration(exePathForShellPrompt);
 
             nReturn = liteStep.Run();
             hr = liteStep.Stop();
@@ -1885,3 +1882,4 @@ BOOL CLiteStep::_SetShellWindow(HWND hWnd) {
 
     return bRet;
 }
+

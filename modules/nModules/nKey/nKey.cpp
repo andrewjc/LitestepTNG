@@ -254,21 +254,31 @@ static void LoadHotKeys() {
 /// String -> Virtual Key Code
 /// </summary>
 static UINT ParseKey(LPCWSTR key) {
-  if (key == nullptr || *key == L'\0') {
+  if (key == nullptr) {
     return UINT(-1);
   }
 
-  const size_t length = wcslen(key);
+  std::wstring lookup(key);
+  const wchar_t* whitespace = L" \t\r\n";
+  size_t first = lookup.find_first_not_of(whitespace);
+  if (first == std::wstring::npos) {
+    return UINT(-1);
+  }
+  size_t last = lookup.find_last_not_of(whitespace);
+  lookup = lookup.substr(first, last - first + 1);
 
-  if (length == 1) {
-    SHORT scan = VkKeyScanW(key[0]);
+  if (lookup.empty()) {
+    return UINT(-1);
+  }
+
+  if (lookup.length() == 1) {
+    SHORT scan = VkKeyScanW(lookup[0]);
     if (scan == -1) {
       return UINT(-1);
     }
     return static_cast<UINT>(scan & 0xFF);
   }
 
-  std::wstring lookup(key);
   std::transform(lookup.begin(), lookup.end(), lookup.begin(), [](wchar_t ch) {
     return static_cast<wchar_t>(towupper(static_cast<unsigned short>(ch)));
   });
@@ -466,10 +476,15 @@ static void ReleaseWinHook() {
 
 static void EnsureWinHook() {
   if (gWinHotkeyHook == NULL) {
-    gWinHotkeyHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, gLSModule.GetInstance(), 0);
+    HINSTANCE instance = gLSModule.GetInstance();
+    gWinHotkeyHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, instance, 0);
     if (gWinHotkeyHook == NULL) {
+      gWinHotkeyHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, nullptr, 0);
+    }
+    if (gWinHotkeyHook == NULL) {
+      DWORD lastError = GetLastError();
       ErrorHandler::Error(ErrorHandler::Level::Warning,
-        L"Failed to install WIN-key hotkey hook.\nError %lu", GetLastError());
+        L"Failed to install WIN-key hotkey hook.\nError %lu", lastError);
     }
   }
 }
