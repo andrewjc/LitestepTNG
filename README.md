@@ -1,4 +1,4 @@
-# LiteStep NG - Next Generation Windows Shell Replacement
+﻿# LiteStep NG - Next Generation Windows Shell Replacement
 
 LiteStep NG is the modern Windows 10 and Windows 11 shell replacement that evolves the classic LiteStep vision with a performant core, a declarative theme engine, and tooling tuned for creators who want total control over the desktop experience. This project is built for power users, themers, and automation enthusiasts who need a lightweight, extensible alternative to Explorer.
 
@@ -56,15 +56,15 @@ LiteStep NG is the modern Windows 10 and Windows 11 shell replacement that evolv
 ```
 
 ## Differences from Classic LiteStep
-Andrew Cranston (AndrewJC / Andrew C) led a multi-stage modernization that realigns LiteStep with Windows 10-era expectations:
+Here are the major changes from Classic LiteStep:
 
-- **Windows 10 baseline** - Commit `210dd44` raises the manifest and `_WIN32_WINNT` values to 0x0A00, removing legacy shims while `docs/manual.txt` now states Windows 10/Server 2016 as the minimum supported platforms. Earlier versions of Windows are no longer targeted.
-- **Modern toolchain** - Commit `23c33c4` retargets the solution to Visual Studio 2022 and the v143 toolset, while `modules/BuildProperties/*.props` (5a6ca4b) introduce shared MSBuild property sheets to align module outputs, warning levels, and platform directories.
-- **Responsive LSAPI** - Commit `b15c1ad` introduces a pooled task executor so modules queue asynchronous work instead of launching raw threads, improving stability during shell startup and recycle scenarios.
-- **Startup and overlay experience** - Commits `94862ed`, `307b80a`, `9966a53`, and `34837dd` add overlay launch modes, Explorer coexistence prompts, automatic shutdown of previous instances, and first-run shell configuration flows tailored for modern Windows sessions.
-- **Windows-aware input and notifications** - Commits `cf14d07` and `93ffc74` extend nKey to understand Windows-key combinations, and `1208371` adopts the Windows 10 tray notification model for reliable toast and overflow behavior.
-- **Diagnostics-first approach** - Commit `08e5a06` bolts in structured logging, richer module diagnostics, and a refreshed `StartupRunner`, reducing the guesswork when debugging theme or module issues.
-- **Declarative theming overhaul** - Commit `9f840b2` lands Theme Engine V2 and a translucent default theme, separating structure (`theme.lsx`) from style (`theme.lsxstyle`) and demonstrating modern quick-launch, taskbar, and tray layouts tuned for Windows 11 aesthetics.
+- **Windows 10 baseline** - The shell now ships with a Windows 10 manifest, targets `_WIN32_WINNT=0x0A00`, and officially drops support for legacy Windows releases.
+- **Modern toolchain** - The solution targets Visual Studio 2022 with the v143 toolset and uses shared MSBuild property sheets so modules build consistently across x64 and Win32.
+- **Responsive LSAPI** - A built-in pooled task executor keeps modules responsive by handling asynchronous work without spawning raw threads during startup or recycle.
+- **Startup and overlay experience** - Overlay launch modes, Explorer coexistence prompts, automatic shutdown of previous instances, and first-run setup flows make swapping shells smoother.
+- **Windows-aware input and notifications** - nKey understands Windows-key combinations and the tray adopts the Windows 10 notification model for reliable toasts and overflow behavior.
+- **Diagnostics-first approach** - Structured logging, richer module diagnostics, and a refreshed `StartupRunner` shorten the loop when tracking down theme or module issues.
+- **Declarative theming overhaul** - Theme Engine V2 separates structure (`theme.lsx`) from style (`theme.lsxstyle`) and ships with a translucent default theme tuned for Windows 11 aesthetics.
 
 Together these changes deliver a Windows 10+ native shell experience while intentionally dropping support for Windows 7, Vista, XP, and earlier.
 
